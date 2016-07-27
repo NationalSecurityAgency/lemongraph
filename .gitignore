@@ -1,0 +1,16 @@
+*.pyc
+*.o
+*.so
+*.db
+*-lock
+*.swp
+*/__pycache__
+build
+dist
+LemonGraph.egg-info
+MANIFEST
+graphs.idx
+LemonGraph/data/d3.v3.min.js
+LemonGraph/data/d3.v4.min.js
+LemonGraph/data/svg-crowbar.js
+deps/js

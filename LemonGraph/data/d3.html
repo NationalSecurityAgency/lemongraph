@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+.node {
+  stroke: #fff;
+  stroke-width: 1.5px;
+}
+
+.link {
+  stroke: #999;
+  stroke-opacity: .6;
+  stroke-width: 1.5px;
+}
+
+.svg-container {
+  display: inline-block;
+  position: relative;
+  width: 100%;
+  padding-bottom: 100%; /* aspect ratio */
+  vertical-align: top;
+  overflow: hidden;
+}
+
+.svg-content-responsive {
+  display: inline-block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+}
+</style>
+<body>
+<script type="text/javascript">
+function export_svg(){
+	var e = document.createElement('script');
+	e.setAttribute('src', '/static/svg-crowbar.js');
+	e.setAttribute('class', 'svg-crowbar');
+	document.body.appendChild(e);
+}
+</script>
+<button onclick="export_svg()">Export SVG</button>
+<script src="/static/d3.v3.min.js"></script>
+<script type="text/javascript">
+
+function dragstarted(d) {
+  d3.event.sourceEvent.stopPropagation();
+  d3.select(this).classed("dragging", true);
+}
+
+function dragged(d) {
+  d3.select(this).attr("cx", d.x = d3.event.x).attr("cy", d.y = d3.event.y);
+}
+
+function dragended(d) {
+  d3.select(this).classed("dragging", false);
+}
+
+var w = window,
+	d = document,
+	e = d.documentElement,
+	g = d.getElementsByTagName('body')[0],
+	width  = w.innerWidth  || e.clientWidth  || g.clientWidth,
+	height = w.innerHeight || e.clientHeight || g.clientHeight;
+
+var color = d3.scale.category20();
+
+var force = d3.layout.force()
+  .size([width, height]);
+
+force.drag()
+  .origin(function(d) { return d; })
+  .on("dragstart", dragstarted)
+  .on("drag", dragged)
+  .on("dragend", dragended);
+
+var svg = d3.select("body").append("svg")
+  .attr("preserveAspectRatio", "xMinYMin meet")
+  .attr("viewBox", "0 0 " + width + " " + height)
+  .classed("svg-content-responsive", true)
+  .call(d3.behavior.zoom().scaleExtent([0.25, 8]).on("zoom", function () {
+    svg.attr("transform", "translate(" + d3.event.translate + ")" + " scale(" + d3.event.scale + ")")
+  }))
+  .on("dblclick.zoom", null)
+  .append("g");
+
+var uuid = window.location.pathname.substr(window.location.pathname.length - 36);
+
+function sortObject(obj) {
+  if(typeof obj !== 'object')
+    return obj
+  var tmp = {};
+  var keys = [];
+  for(var key in obj)
+    keys.push(key);
+  keys.sort();
+  for(var index in keys)
+    tmp[keys[index]] = sortObject(obj[keys[index]]);
+  return tmp;
+}
+
+function sortTopObject(obj, preload) {
+  var tmp = {};
+  var keys = [];
+  for(var index in preload)
+    tmp[preload[index]] = sortObject(obj[preload[index]]);
+  for(var key in obj)
+    if(!(key in tmp))
+      keys.push(key);
+  keys.sort();
+  for(var index in keys)
+    tmp[keys[index]] = sortObject(obj[keys[index]]);
+  return tmp;
+}
+
+d3.json("/d3/" + uuid + window.location.search, function(error, graph) {
+  if (error) throw error;
+
+  force
+    .nodes(graph.nodes)
+    .links(graph.edges)
+    .start();
+
+  var link = svg.selectAll(".link")
+    .data(graph.edges)
+    .enter().append("line")
+    .attr("class", "link");
+
+  link.append("title")
+    .text(function(d) { return JSON.stringify(sortTopObject(d.data,['ID','type','value','srcID','tgtID']), null, 2); });
+
+  var node = svg.selectAll(".node")
+    .data(graph.nodes)
+    .enter().append("circle")
+    .attr("class", "node")
+    .attr("r", 5)
+    .style("fill", function(d) { return color(d.data.type); })
+    .call(force.drag);
+
+  node.append("title")
+    .text(function(d) { return JSON.stringify(sortTopObject(d.data,['ID','type','value']), null, 2); });
+
+  force.on("tick", function() {
+    link.attr("x1", function(d) { return d.source.x; })
+      .attr("y1", function(d) { return d.source.y; })
+      .attr("x2", function(d) { return d.target.x; })
+      .attr("y2", function(d) { return d.target.y; });
+
+    node.attr("cx", function(d) { return d.x; })
+      .attr("cy", function(d) { return d.y; });
+  });
+});
+
+</script>
+</body>

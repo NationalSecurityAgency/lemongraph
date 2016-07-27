@@ -1,0 +1,8 @@
+graft lib
+graft deps
+include test.py
+include lg_cffi_setup.py
+include LICENSE
+include Makefile
+include README.md
+include RESTAPI
