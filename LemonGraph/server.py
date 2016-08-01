@@ -189,6 +189,8 @@ def graphtxn(write=False, create=False, excl=False, on_success=None, on_failure=
             except (IOError, OSError) as e:
                 if e.errno is errno.EPERM:
                     raise HTTPError(403, str(e))
+                elif e.errno is errno.ENOSPC:
+                    raise HTTPError(507, str(e))
                 raise HTTPError(404, "Backend graph for %s is inaccessible: %s" % (uuid, str(e)))
             success = None
             try:
@@ -215,8 +217,8 @@ def graphtxn(write=False, create=False, excl=False, on_success=None, on_failure=
                     yield ''
             except HTTPError:
                 raise
-            except IOError as e:
-                raise HTTPError(500, str(e))
+            except (IOError, OSError) as e:
+                raise HTTPError(507 if e.errno is errno.ENOSPC else 500, str(e))
             except Exception as e:
                 info = sys.exc_info()
                 log.error('Unhandled exception: %s', traceback.print_exception(*info))

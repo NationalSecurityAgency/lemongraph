@@ -472,6 +472,7 @@ class Response(object):
         500: 'Internal Server Error',
         502: 'Bad Gateway',
         503: 'Service Unavailable',
+        507: 'Insufficient Storage',
     }
     def __init__(self, sock):
         self._code = None
