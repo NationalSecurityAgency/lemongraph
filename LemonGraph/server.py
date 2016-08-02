@@ -1,5 +1,5 @@
 from . import Serializer, Node, Edge, Adapters, QuerySyntaxError
-from .collection import Collection
+from .collection import Collection, uuid_to_utc
 
 import atexit
 from collections import deque, defaultdict, namedtuple
@@ -455,7 +455,7 @@ class Graph_UUID(_Input, _Streamy):
             yield block
 
     def _dump_json(self, txn, uuid):
-        yield '{"graph":"%s","maxID":%d,"size":%d,"meta":' % (uuid, txn.lastID, txn.graph.size)
+        yield '{"graph":"%s","maxID":%d,"size":%d,"created":"%s","meta":' % (uuid, txn.lastID, txn.graph.size, uuid_to_utc(uuid))
         yield self.dumps(dict(txn.iteritems()))
         yield ',"nodes":['
         nodes = txn.nodes()

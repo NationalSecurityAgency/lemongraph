@@ -1,4 +1,5 @@
 from collections import deque
+import datetime
 import errno
 import logging
 import os
@@ -19,6 +20,10 @@ log.addHandler(logging.NullHandler())
 
 def uuidgen():
     return str(uuid.uuid1())
+
+def uuid_to_utc(u):
+    ts = (uuid.UUID('{%s}' % u).get_time() - 0x01b21dd213814000L) / 1e7
+    return datetime.datetime.utcfromtimestamp(ts).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
 
 class CollectionHooks(Hooks):
     def __init__(self, uuid, collection):
@@ -155,6 +160,7 @@ class Context(object):
             output['meta'] = {}
         output['size'] = status['size']
         output['maxID'] = status['nextID'] - 1
+        output['created'] = uuid_to_utc(uuid)
         return output
 
     def status(self, uuid):
