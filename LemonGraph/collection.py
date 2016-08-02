@@ -173,7 +173,7 @@ class Context(object):
 
     def _sync_status(self, uuid, txn):
         status = {}
-        status['nextID'] = self.nextDB[uuid] = txn.nextID
+        status['nextID'] = txn.nextID
         status['size'] = txn.graph.size
 
         try:
@@ -211,15 +211,6 @@ class Context(object):
             self.status_index.update(uuid, status, None)
         except KeyError:
             pass
-        for kv in (self.nextDB,):
-            try:
-                kv.pop(uuid)
-            except KeyError:
-                pass
-
-    @lazy
-    def nextDB(self):
-        return self.txn.kv('lg.collection.nextIDs', serialize_value=self.uint)
 
     @lazy
     def updatedDB(self):
@@ -281,22 +272,12 @@ class Collection(object):
     def sync(self, uuid, g):
         with self.context(write=True) as ctx:
             with g.transaction(write=False) as txn:
-                try:
-                    if txn.nextID <= ctx.nextDB[uuid]:
-                        return
-                except KeyError:
-                    pass
                 ctx.sync(uuid, txn)
 
     def sync_qflush(self, uuid, g):
         with self.context(write=True) as ctx:
             with g.transaction(write=False) as txn:
                 try:
-                    try:
-                        if txn.nextID <= ctx.nextDB[uuid]:
-                            return
-                    except KeyError:
-                        pass
                     ctx.sync(uuid, txn)
                 finally:
                     try:

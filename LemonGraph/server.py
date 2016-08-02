@@ -236,11 +236,12 @@ def graphtxn(write=False, create=False, excl=False, on_success=None, on_failure=
 
 
 class _Input(Handler):
-    def do_input(self, txn, create=False):
+    def do_input(self, txn, create=False, data=None):
         if create and 'created' not in txn:
             txn['created'] = datetime.datetime.utcnow().isoformat('T') + 'Z'
 
-        data = self.input()
+        if data is None:
+            data = self.input()
         if data is None:
             return
 
@@ -576,6 +577,18 @@ class Graph_UUID_Status(Handler):
             raise HTTPError(404, '%s status is not cached' % uuid)
         return status
 
+class Reset_UUID(_Input, Handler):
+    path = ('reset', UUID,)
+
+    @graphtxn(write=True)
+    def put(self, g, txn, _, uuid):
+        seed = None
+        for seed in SeedTracker(txn).seeds:
+            break
+        txn.reset()
+        if seed is not None:
+            self.do_input(txn, data=seed)
+
 class D3_UUID(_Streamy, Handler):
     path = ('d3', UUID)
 
@@ -791,6 +804,7 @@ class Server(object):
             Graph_UUID_Exec,
             Graph_UUID_Seeds,
             Graph_UUID_Status,
+            Reset_UUID,
             View_UUID,
             D3_UUID,
             Favicon,
