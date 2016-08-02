@@ -333,6 +333,11 @@ class Transaction(GraphItem):
             self.adapters.update(self, self._flushID)
             self._flushID = self.nextID
 
+    def reset(self):
+        err = lib.graph_txn_reset(self._txn)
+        if err:
+            raise IOError(int(err), ffi.string(lib.graph_strerror(err)))
+
     def _commit(self):
         if self.updated:
             self.flush(updated=True)

@@ -1306,6 +1306,17 @@ graph_txn_t graph_txn_begin(graph_t g, graph_txn_t parent, unsigned int flags){
 	return txn;
 }
 
+int graph_txn_reset(graph_txn_t txn){
+	int i, r;
+	for(i=0; i < DBS; i++){
+		r = db_drop((txn_t) txn, i, 0);
+		if(r != MDB_SUCCESS)
+			break;
+	}
+	txn->next_strID = txn->next_logID = 0;
+	return r;
+}
+
 int graph_txn_updated(graph_txn_t txn){
 	return txn_updated((txn_t)txn);
 }

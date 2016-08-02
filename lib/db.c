@@ -112,6 +112,13 @@ int db_del(txn_t txn, int dbi, MDB_val *key, MDB_val *data){
 	return ret;
 }
 
+int db_drop(txn_t txn, int dbi, int del){
+	int ret = mdb_drop(txn->txn, txn->db->handles[dbi], del);
+	if(MDB_SUCCESS == ret)
+		txn->updated = 1;
+	return ret;
+}
+
 cursor_t txn_cursor_new(txn_t txn, int dbi){
 	return txn_cursor_init(0, txn, dbi);
 }

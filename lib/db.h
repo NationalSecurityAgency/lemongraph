@@ -28,6 +28,7 @@ db_t db_init(const size_t size, const char * const path, const int flags, const 
 int db_get(txn_t txn, int dbi, MDB_val *key, MDB_val *data);
 int db_put(txn_t txn, int dbi, MDB_val *key, MDB_val *data, unsigned int flags);
 int db_del(txn_t txn, int dbi, MDB_val *key, MDB_val *data);
+int db_drop(txn_t txn, int dbi, int del);
 void db_sync(db_t db, int force);
 int db_updated(db_t db);
 void db_close(db_t db);

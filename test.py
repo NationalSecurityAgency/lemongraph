@@ -180,6 +180,18 @@ class TestGraph(unittest.TestCase):
         with self.g.transaction(write=True) as t0:
             self.assertTrue(t0['foo'] == "t000")
 
+    def test_reset(self):
+        with self.g.transaction(write=True) as txn:
+            n = txn.node(type="foo", value="bar")
+            nextID = txn.nextID
+        with self.g.transaction(write=True) as txn:
+            self.assertEqual(nextID, txn.nextID)
+            txn.reset()
+            self.assertEqual(1, txn.nextID)
+        with self.g.transaction(write=False) as txn:
+            self.assertEqual(1, txn.nextID)
+
+
 class TestSerializers(unittest.TestCase):
 
     def test_default(self):
