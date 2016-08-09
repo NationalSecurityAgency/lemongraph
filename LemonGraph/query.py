@@ -161,6 +161,33 @@ class Query(object):
             for seed in c.seeds(txn, beforeID=(stop+1) if stop else None):
                 yield (p, ctx.matches(seed, idx=c.best))
 
+    def validate(self, *chains):
+        ctxs_by_len = {}
+        for p_idx, c in enumerate(self.compiled):
+            if c is None:
+                continue
+            p = self.patterns[p_idx]
+            try:
+                ctxs_by_len[len(c.keep)][p] = MatchCTX(c)
+            except KeyError:
+                ctxs_by_len[len(c.keep)] = { p: MatchCTX(c) }
+
+        for chain in chains:
+            if not isinstance(chain, tuple):
+                chain = tuple(chain)
+            try:
+                ctxs = ctxs_by_len[len(chain)]
+            except KeyError:
+                continue
+            for p, ctx in ctxs.iteritems():
+                valid = True
+                for target, idx in zip(chain, ctx.match.keep):
+                    if not ctx.match.is_valid(target, idx=idx):
+                        valid = False
+                        break
+                if valid:
+                    yield p, chain
+
     def _streaming(self, txn, start, stop, limit, scanner):
         self._gen_handlers()
         ctxs = {}

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 import uuid
 
-from LemonGraph import Graph, Serializer, dirlist
+from LemonGraph import Graph, Serializer, dirlist, Query
 
 node = lambda i: dict((k, Nodes[i][k]) for k in ('type', 'value'))
 edge = lambda i: dict((k, Edges[i][k]) for k in ('type', 'value', 'src', 'tgt'))
@@ -239,6 +239,30 @@ class TestDL(unittest.TestCase):
             elif x == '..':
                 dots += 2
         self.assertEqual(dots, 3)
+
+class TestQL(unittest.TestCase):
+    chains = (
+        ({'type': '', 'foo': 'bar'},),
+        ({'type': '', 'foo': 'bar'}, {'type': 'foo'}),
+    )
+
+    matches = {
+        'n()':               [0],
+        'e()':               [0],
+        'n(foo~/^bar$/)':    [0],
+        'n()-n(type="foo")': [1],
+    }
+
+    def test_a(self):
+        results = {}
+        q = Query(self.matches.keys())
+        for i, chain in enumerate(self.chains):
+            for p, chain in q.validate(chain):
+                try:
+                    results[p].append(i)
+                except KeyError:
+                    results[p] = [i]
+        self.assertDictEqual(self.matches, results)
 
 if __name__ == '__main__':
     unittest.main()
