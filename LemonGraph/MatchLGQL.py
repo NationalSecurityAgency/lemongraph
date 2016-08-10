@@ -524,11 +524,14 @@ class MatchLGQL(object):
             pass
 
         # if there are no tests, add fudge trigger for new node/edge
+        fudged = 0
         if len(tests_new) == 0:
             tests_new.append((('type',), 'exists', ()))
+            fudged = 1
 
         info['tests'] = tuple(tests_new)
         info['accel'] = accel
+        info['fudged'] = fudged
 
         return info
 
@@ -576,8 +579,10 @@ class MatchLGQL(object):
                 print >>fh, '\t%s:[],' % (pre)
         print >>fh, ']'
 
-    def is_valid(self, obj, idx=0):
-        for test in self.matches[idx]['tests']:
+    def is_valid(self, obj, idx=0, skip_fudged=False):
+        match = self.matches[idx]
+        n = match['fudged'] if skip_fudged else 0
+        for test in match['tests'][n:]:
             if not eval_test(obj, test):
                 return False
         return True

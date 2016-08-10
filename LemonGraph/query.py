@@ -182,7 +182,7 @@ class Query(object):
             for p, ctx in ctxs.iteritems():
                 valid = True
                 for target, idx in zip(chain, ctx.match.keep):
-                    if not ctx.match.is_valid(target, idx=idx):
+                    if not ctx.match.is_valid(target, idx=idx, skip_fudged=True):
                         valid = False
                         break
                 if valid:

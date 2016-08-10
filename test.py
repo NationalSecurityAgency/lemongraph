@@ -242,8 +242,8 @@ class TestDL(unittest.TestCase):
 
 class TestQL(unittest.TestCase):
     chains = (
-        ({'type': '', 'foo': 'bar'},),
-        ({'type': '', 'foo': 'bar'}, {'type': 'foo'}),
+        ({'foo': 'bar'},),
+        ({'foo': 'bar'}, {'type': 'foo'}),
     )
 
     matches = {
