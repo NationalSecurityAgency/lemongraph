@@ -3,7 +3,6 @@ from .collection import Collection, uuid_to_utc
 
 import atexit
 from collections import deque, defaultdict, namedtuple
-import datetime
 import errno
 from getopt import GetoptError, gnu_getopt as getopt
 import itertools
@@ -236,10 +235,7 @@ def graphtxn(write=False, create=False, excl=False, on_success=None, on_failure=
 
 
 class _Input(Handler):
-    def do_input(self, txn, create=False, data=None):
-        if create and 'created' not in txn:
-            txn['created'] = datetime.datetime.utcnow().isoformat('T') + 'Z'
-
+    def do_input(self, txn, uuid, create=False, data=None):
         if data is None:
             data = self.input()
         if data is None:
@@ -345,7 +341,8 @@ class _Input(Handler):
 
     @graphtxn(write=True, create=True, excl=True, on_failure=lambda g: g.delete())
     def _create(self, g, txn, _, uuid):
-        self.do_input(txn, create=True)
+        txn['created'] = uuid_to_utc(uuid)
+        self.do_input(txn, uuid, create=True)
         self.res.code = 201
         self.res.headers.set('Location', '/graph/' + uuid)
         return self.dumps({ 'uuid': uuid }, pretty=True)
@@ -544,7 +541,7 @@ class Graph_UUID(_Input, _Streamy):
 
     @graphtxn(write=True)
     def _update(self, g, txn, _, uuid):
-        self.do_input(txn)
+        self.do_input(txn, uuid)
 
     def post(self, _, uuid):
         if 'create' in self.params:
@@ -586,8 +583,9 @@ class Reset_UUID(_Input, Handler):
         for seed in SeedTracker(txn).seeds:
             break
         txn.reset()
+        txn['created'] = uuid_to_utc(uuid)
         if seed is not None:
-            self.do_input(txn, data=seed)
+            self.do_input(txn, uuid, data=seed)
 
 class D3_UUID(_Streamy, Handler):
     path = ('d3', UUID)
