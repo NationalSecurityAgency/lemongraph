@@ -29,6 +29,7 @@ CACHE = {}
 BLOCKSIZE=1048576
 UUID = re.compile(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
 INT = re.compile(r'^[1-9][0-9]*$')
+STRING = re.compile(r'^.+$')
 
 class LogHandler(logging.StreamHandler):
     def __init__(self, stream=sys.stdout):
@@ -749,6 +750,69 @@ class Graph_UUID_Edge_ID(_Input):
         data['ID'] = ID
         self.do_edge(txn, data)
 
+class _KV(Handler):
+    msgpack = Serializer.msgpack()
+
+    def kv(self, txn):
+        return txn.kv('lg.restblobs', serialize_value=self.msgpack)
+
+class KV_UUID(_KV):
+    path = ('kv', UUID)
+
+    @graphtxn(write=False)
+    def get(self, g, txn, _, uuid):
+        try:
+            kv = self.kv(txn)
+            output = dict(kv.iteritems())
+        except KeyError:
+            output = {}
+
+        yield self.dumps(output)
+
+    @graphtxn(write=True)
+    def post(self, g, txn, _, uuid):
+        data = self.input()
+        kv = self.kv(txn)
+        try:
+            gen = data.iteritems()
+        except Exception as e:
+            raise HTTPError(400, "bad input (%s)" % str(e))
+        for k, v in gen:
+            kv[k] = v
+
+    @graphtxn(write=True)
+    def delete(self, g, txn, _, uuid):
+        try:
+            kv = self.kv(txn)
+        except KeyError:
+            return
+        for k in kv.iterkeys():
+            del kv[k]
+
+class KV_UUID_Key(_KV):
+    path = ('kv', UUID, STRING)
+
+    @graphtxn(write=False)
+    def get(self, g, txn, _, uuid, key):
+        try:
+            kv = self.kv(txn)
+            yield self.dumps(kv[key])
+        except KeyError:
+            raise HTTPError(404, 'key not found')
+
+    @graphtxn(write=True)
+    def put(self, g, txn, _, uuid, key):
+        data = self.input()
+        kv = self.kv(txn)
+        kv[key] = data
+
+    @graphtxn(write=True)
+    def delete(self, g, txn, _, uuid, key):
+        try:
+            kv = self.kv(txn)
+            del kv[key]
+        except KeyError:
+            raise HTTPError(404, 'key not found')
 
 class Static(Handler):
     res = re.compile('^[^/]+\.(js|css|html)')
@@ -801,6 +865,8 @@ class Server(object):
             Graph_UUID_Seeds,
             Graph_UUID_Status,
             Reset_UUID,
+            KV_UUID,
+            KV_UUID_Key,
             View_UUID,
             D3_UUID,
             Favicon,
