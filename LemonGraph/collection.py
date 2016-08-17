@@ -117,6 +117,7 @@ class Context(object):
     def __exit__(self, type, value, traceback):
         ret = self.txn.__exit__(type, value, traceback)
         self.txn = None
+        return ret
 
     def _graphs(self, user, roles):
         if roles:
