@@ -341,7 +341,6 @@ class _Input(Handler):
 
     @graphtxn(write=True, create=True, excl=True, on_failure=lambda g: g.delete())
     def _create(self, g, txn, _, uuid):
-        txn['created'] = uuid_to_utc(uuid)
         self.do_input(txn, uuid, create=True)
         self.res.code = 201
         self.res.headers.set('Location', '/graph/' + uuid)
@@ -583,7 +582,6 @@ class Reset_UUID(_Input, Handler):
         for seed in SeedTracker(txn).seeds:
             break
         txn.reset()
-        txn['created'] = uuid_to_utc(uuid)
         if seed is not None:
             self.do_input(txn, uuid, data=seed)
 
