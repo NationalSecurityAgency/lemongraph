@@ -1,6 +1,4 @@
 /graph
-	HEAD - not impl yet
-
 	GET (Accept: application/json, application/x-msgpack)
 		Can be filtered by supplying query parameters 'user' and 'role' - see below
 		If no queries ('q') are supplied:
@@ -61,7 +59,7 @@
 					evaluate streaming query over ID range [start, inf)
 				eilf stop:
 					evaluate ad-hoc query as of position
-			
+
 				streams a single lists of lists:
 					first entry is a sorted list of the requested query patterns
 					remaining entries are tuples of query pattern index and matching chain
@@ -78,7 +76,7 @@
 		}
 		all node objects must have at minimum either of:
 			a) type/value combo
-			b) ID (node must exist already) 
+			b) ID (node must exist already)
 		all edge objects referenced in chains must have at minimum either of:
 			a) type[/value] (optional value defaults to empty string)
 			b) ID (edge must exist already)
@@ -98,15 +96,33 @@
 	GET (Accept: application/json, application/x-msgpack)
 	PUT (Content-Type:  application/json, application/x-msgpack)
 
+/graph/<uuid>/status
+	HEAD
+	GET (Accept: application/json, application/x-msgpack)
+
+/reset/<uuid>
+	PUT
+		Clears entire graph db and re-inserts the first POST marked as seed data, if present.
+		Payload should be empty.
+
 /graph/<uuid>/node/<id>
-	HEAD - not impl
 	GET (Accept: application/json, application/x-msgpack)
 	PUT (Content-Type:  application/json, application/x-msgpack)
 
 /graph/<uuid>/edge/<id>
-	HEAD - not impl
 	GET (Accept: application/json, application/x-msgpack)
 	PUT (Content-Type:  application/json, application/x-msgpack)
+
+/graph/exec
+	POST (Content-Type: application/python)
+		Post python script body that at minimum defines a handler function like so:
+			def handler(txns_uuids, headers, **kwargs):
+				pass
+		After loading, it will be called with:
+			* a generator that yields tuples of read-only transaction handle and matching uuid
+			* the response headers object
+			* and any supplied QUERY_STRING parameters as named parameters
+		Optionally filter graphs by supplying user and role parameters (they will be excluded from the kwargs fed to the handler)
 
 /graph/<uuid>/exec
 	POST (Content-Type: application/python)
@@ -123,12 +139,40 @@
 	GET (Accept: application/json, application/x-msgpack)
 		Returns ordered list of posted payloads that were marked as seeds.
 
+/kv/<uuid> - non-logged key/value pairs
+	GET (Accept: application/json, application/x-msgpack)
+		Retrieves dictionary
+
+	PUT (Content-Type:  application/json, application/x-msgpack)
+		Overwrites dictionary
+
+	POST (Content-Type:  application/json, application/x-msgpack)
+		Merges dictionary
+
+	DELETE
+		Deletes dictionary
+
+/kv/<uuid>/<key> - non-logged key/value pairs
+	GET	(Accept: application/json, application/x-msgpack)
+		Retrieves specific dictionary key
+
+	PUT (Content-Type:  application/json, application/x-msgpack)
+		Overwrites specific dictionary key
+
+	POST (Content-Type:  application/json, application/x-msgpack)
+		Merges specific dictionary key
+
+	DELETE
+		Deletes	specific dictionary key
+
+
 /view/<uuid>
 	GET
-
-/cytoscape/<uuid>
+		Returns html that presents a graph using D3
 
 /d3/<uuid>
+	GET
+		Streams D3-friendly json dump of graph
 
 
 Magic Meta Keys:
