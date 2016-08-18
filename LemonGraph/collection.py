@@ -21,9 +21,11 @@ log.addHandler(logging.NullHandler())
 def uuidgen():
     return str(uuid.uuid1())
 
+def uuid_to_utc_ts(u):
+    return (uuid.UUID('{%s}' % u).get_time() - 0x01b21dd213814000L) / 1e7
+
 def uuid_to_utc(u):
-    ts = (uuid.UUID('{%s}' % u).get_time() - 0x01b21dd213814000L) / 1e7
-    return datetime.datetime.utcfromtimestamp(ts).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+    return datetime.datetime.utcfromtimestamp(uuid_to_utc_ts(u)).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
 
 class CollectionHooks(Hooks):
     def __init__(self, uuid, collection):
@@ -138,8 +140,12 @@ class Context(object):
             for uuid, status in all:
                 yield uuid, status
 
-    def graphs(self, enabled=None, user=None, roles=None):
+    def graphs(self, enabled=None, user=None, roles=None, created_before=None, created_after=None):
         gen = self._graphs(user, None if user is None else roles)
+        if created_before is not None:
+            gen = ((uuid, status) for uuid, status in gen if uuid_to_utc_ts(uuid) < created_before)
+        if created_after is not None:
+            gen = ((uuid, status) for uuid, status in gen if uuid_to_utc_ts(uuid) > created_after)
         if enabled is not None:
             gen = ((uuid, status) for uuid, status in gen if status['enabled'] is enabled)
         for uuid, status in gen:

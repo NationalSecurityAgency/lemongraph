@@ -3,6 +3,7 @@ from .collection import Collection, uuid_to_utc
 
 import atexit
 from collections import deque, defaultdict, namedtuple
+import dateutil.parser
 import errno
 from getopt import GetoptError, gnu_getopt as getopt
 import itertools
@@ -15,6 +16,7 @@ import pkg_resources
 import re
 import sys
 import tempfile
+import time
 import traceback
 from uuid import uuid1 as uuidgen
 
@@ -30,6 +32,10 @@ BLOCKSIZE=1048576
 UUID = re.compile(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
 INT = re.compile(r'^[1-9][0-9]*$')
 STRING = re.compile(r'^.+$')
+
+def date_to_timestamp(s):
+    dt = dateutil.parser.parse(s)
+    return time.mktime(dt.utctimetuple()) + dt.microsecond / 1e6
 
 class LogHandler(logging.StreamHandler):
     def __init__(self, stream=sys.stdout):
@@ -180,6 +186,19 @@ class Handler(HTTPMethods):
             'user':  self.param('user', None),
             'roles': self.params.get('role', None),
         }
+
+    @property
+    def graphs_filter(self):
+        filter = self.creds
+        filter['enabled'] = True if 'enabled' in self.params else None
+        for created in ('created_after', 'created_before'):
+            s = self.param(created, None)
+            if s:
+                try:
+                    filter[created] = date_to_timestamp(s)
+                except ValueError:
+                    raise HTTPError(400, 'Bad datetime string for %s: %s' % (created, s))
+        return filter
 
 def graphtxn(write=False, create=False, excl=False, on_success=None, on_failure=None):
     def decorator(func):
@@ -370,10 +389,9 @@ class Graph_Root(_Input, _Streamy):
     path = ('graph',)
 
     def get(self, _):
-        enabled = True if 'enabled' in self.params else None
         queries = self.params.get('q')
         with self.collection.context(write=False) as ctx:
-            graphs = ctx.graphs(enabled=enabled, user=self.param('user', None), roles=self.params.get('role', None))
+            graphs = ctx.graphs(**self.graphs_filter)
             gen = self._query_graphs(graphs, queries) if queries else self.stream(graphs)
             for info in gen:
                 yield info
@@ -634,7 +652,7 @@ class D3_UUID(_Streamy, Handler):
 
 class Graph_Exec(_Input, _Streamy):
     path = ('graph', 'exec')
-    eat_params = ('enabled', 'user', 'role')
+    eat_params = ('enabled', 'user', 'role', 'created_after', 'created_before')
 
     def post(self, _, __):
         if self.content_type != 'application/python':
@@ -646,9 +664,8 @@ class Graph_Exec(_Input, _Streamy):
             'stream': self.stream,
             'HTTPError': HTTPError,
         }
-        enabled = True if 'enabled' in self.params else None
         with self.collection.context(write=False) as ctx:
-            uuids = tuple(x['graph'] for x in ctx.graphs(enabled=enabled, user=self.param('user', None), roles=self.params.get('role', None)))
+            uuids = tuple(x['graph'] for x in ctx.graphs(**self.graphs_filter))
 
         txns_uuids = self._txns_uuids(uuids)
         try:
