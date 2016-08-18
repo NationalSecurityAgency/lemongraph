@@ -86,7 +86,7 @@ def fetch_external():
     git_submodule_init()
     fetch_js()
 
-reqs = ['cffi>=1.0', 'lazy', 'msgpack-python', 'pysigset']
+reqs = ['cffi>=1.0', 'lazy', 'msgpack-python', 'pysigset', 'dateutil']
 if platform.python_implementation() == 'CPython':
     reqs.append('ujson')
 

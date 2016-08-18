@@ -61,9 +61,9 @@ Note that the REST service cannot run on CentOS 6's Python 2.6, as we rely on th
 
 Or to run without proper installation, you must manually install dependencies:
 * CPython:
-	* `easy_install lazy pysigset msgpack-python ujson`
+	* `easy_install lazy pysigset msgpack-python dateutil ujson`
 * Pypy:
-	* `easy_install lazy pysigset msgpack-python`
+	* `easy_install lazy pysigset msgpack-python dateutil`
 
 # Python Example
 ```python
