@@ -348,7 +348,8 @@ class Collection(object):
 
     def user_allowed(self, g, user, roles):
         with g.transaction(write=False) as txn:
-            return bool(self.user_roles(txn, user).intersection(roles))
+            user_roles = self.user_roles(txn, user)
+            return bool(user_roles if roles is None else user_roles.intersection(roles))
 
     def user_roles(self, txn, user):
         try:
