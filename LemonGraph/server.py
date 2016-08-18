@@ -1,4 +1,4 @@
-from . import Serializer, Node, Edge, Adapters, QuerySyntaxError
+from . import Serializer, Node, Edge, Adapters, QuerySyntaxError, merge_values
 from .collection import Collection, uuid_to_utc
 
 import atexit
@@ -754,7 +754,7 @@ class _KV(Handler):
     msgpack = Serializer.msgpack()
 
     def kv(self, txn):
-        return txn.kv('lg.restblobs', serialize_value=self.msgpack)
+        return txn.kv('lg.restobjs', serialize_value=self.msgpack)
 
 class KV_UUID(_KV):
     path = ('kv', UUID)
@@ -778,6 +778,20 @@ class KV_UUID(_KV):
         except Exception as e:
             raise HTTPError(400, "bad input (%s)" % str(e))
         for k, v in gen:
+            kv[k] = merge_values(kv.get(k, None), v)
+
+    @graphtxn(write=True)
+    def put(self, g, txn, _, uuid):
+        data = self.input()
+        kv = self.kv(txn)
+        try:
+            gen = data.iteritems()
+        except Exception as e:
+            raise HTTPError(400, "bad input (%s)" % str(e))
+        for k, v in kv.iteritems():
+            if k not in data:
+                del kv[k]
+        for k, v in gen:
             kv[k] = v
 
     @graphtxn(write=True)
@@ -799,6 +813,12 @@ class KV_UUID_Key(_KV):
             yield self.dumps(kv[key])
         except KeyError:
             raise HTTPError(404, 'key not found')
+
+    @graphtxn(write=True)
+    def post(self, g, txn, _, uuid, key):
+        data = self.input()
+        kv = self.kv(txn)
+        kv[key] = merge_values(kv.get(key, None), data)
 
     @graphtxn(write=True)
     def put(self, g, txn, _, uuid, key):
