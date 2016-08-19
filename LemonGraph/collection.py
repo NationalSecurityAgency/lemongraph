@@ -43,9 +43,6 @@ class CollectionHooks(Hooks):
 
 
 class StatusIndexer(Indexer):
-    # fixme - automatically rebuild indexes when this changes
-    version = 1
-
     def idx_user_roles(self, obj):
         try:
             user_roles = obj['roles']
@@ -157,13 +154,9 @@ class Context(object):
 
     def _status_enrich(self, status, uuid):
         output = { 'graph': uuid }
-        # fixme - if enriching on the fly is slow, then we could just cache
-        # all of the meta too when we do the sync()
         try:
-            with self.graph(uuid, hook=False, readonly=True, create=False,) as g:
-                with g.transaction(write=False) as txn:
-                    output['meta'] = txn.as_dict()
-        except IOError:
+            output['meta'] = self.metaDB[uuid]
+        except KeyError:
             output['meta'] = {}
         output['size'] = status['size']
         output['maxID'] = status['nextID'] - 1
@@ -179,6 +172,7 @@ class Context(object):
     def sync(self, uuid, txn):
         old_status, new_status = self._sync_status(uuid, txn)
         self.status_index.update(uuid, old_status, new_status)
+        self.metaDB[uuid] = txn.as_dict()
 
     @lazy
     def status_index(self):
@@ -224,6 +218,10 @@ class Context(object):
             self.status_index.update(uuid, status, None)
         except KeyError:
             pass
+        try:
+            del self.metaDB[uuid]
+        except KeyError:
+            pass
 
     @lazy
     def updatedDB(self):
@@ -237,9 +235,16 @@ class Context(object):
     def statusDB(self):
         return self.txn.kv('lg.collection.status', serialize_value=self.msgpack)
 
+    @lazy
+    def metaDB(self):
+        return self.txn.kv('lg.collection.meta', serialize_value=self.msgpack)
+
 
 class Collection(object):
-    def __init__(self, dir, graph_opts=None, create=True, **kwargs):
+    # increment on index structure changes
+    VERSION = 1
+
+    def __init__(self, dir, graph_opts=None, create=True, rebuild=False, **kwargs):
         self.db = None
         if create:
             try:
@@ -250,37 +255,37 @@ class Collection(object):
         self.dir = os.path.abspath(dir)
         idx = "%s.idx" % self.dir
         self.graph_opts = {} if graph_opts is None else graph_opts
-        try:
-            kwargs['create'] = False
-            self.db = Graph(idx, **kwargs)
-            created = False
-        except IOError:
-            if not create:
-                raise
-            kwargs['create'] = True
-            self.db = Graph(idx, **kwargs)
-            created = True
-        if created:
-            UUID = re.compile(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
-            with self.context(write=True) as ctx:
-                count = 0
-                log.info("rebuilding collection index ...")
-                for x in dirlist(self.dir):
-                    if len(x) != 39 or x[-3:] != '.db':
-                        continue
-                    uuid = x[0:36]
-                    if UUID.match(uuid):
-                        count += 1
-                        try:
-                            with ctx.graph(uuid, readonly=True, create=False, hook=False) as g:
-                                with g.transaction(write=False) as txn:
-                                    ctx.sync(uuid, txn)
-                        except IOError as e:
-                            log.warning('error syncing graph %s: %s', uuid, str(e))
-                        if count % 1000 == 0:
-                            log.debug("updated: %d", count)
-                self.db.sync(force=True)
-                log.info("indexed %d graphs", count)
+        kwargs['serialize_property_value'] = self.msgpack
+        kwargs['create'] = create
+        self.db = Graph(idx, **kwargs)
+        if not rebuild:
+            with self.context(write=False) as ctx:
+                found = ctx.txn.get('version', 0)
+                if found == self.VERSION:
+                    return
+                log.info("upgrading index version: %d => %d", found, self.VERSION)
+        UUID = re.compile(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
+        with self.context(write=True) as ctx:
+            ctx.txn.reset()
+            ctx.txn['version'] = self.VERSION
+            count = 0
+            log.info("rebuilding collection index ...")
+            for x in dirlist(self.dir):
+                if len(x) != 39 or x[-3:] != '.db':
+                    continue
+                uuid = x[0:36]
+                if UUID.match(uuid):
+                    count += 1
+                    try:
+                        with ctx.graph(uuid, readonly=True, create=False, hook=False) as g:
+                            with g.transaction(write=False) as txn:
+                                ctx.sync(uuid, txn)
+                    except IOError as e:
+                        log.warning('error syncing graph %s: %s', uuid, str(e))
+                    if count % 1000 == 0:
+                        log.debug("updated: %d", count)
+            self.db.sync(force=True)
+            log.info("indexed %d graphs", count)
 
     def sync(self, uuid, g):
         with self.context(write=True) as ctx:

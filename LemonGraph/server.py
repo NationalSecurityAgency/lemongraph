@@ -964,6 +964,7 @@ def usage(msg=None, fh=sys.stderr):
     print >>fh, '  -b <buflen>         (1048576)'
     print >>fh, '  -s                  enable nosync for graph dbs'
     print >>fh, '  -m                  enable nometasync for graph dbs'
+    print >>fh, '  -r                  rebuild index'
     print >>fh, '  -h                  print this help and exit'
     if msg is not None:
         print >>fh, ''
@@ -973,7 +974,7 @@ def usage(msg=None, fh=sys.stderr):
 def main():
     levels = ('NOTSET', 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')
     try:
-        opts, args = getopt(sys.argv[1:], 'i:p:d:l:w:t:b:smh')
+        opts, args = getopt(sys.argv[1:], 'i:p:d:l:w:t:b:smrh')
     except GetoptError as err:
         usage(msg=str(err))
     if len(args) > 1:
@@ -987,6 +988,7 @@ def main():
     poll = 250
     nosync = False
     nometasync = False
+    rebuild = False
     path = 'graphs'
     workers = -1
     timeout = 3
@@ -1005,9 +1007,11 @@ def main():
             elif o == '-d':
                 poll = sorted((20, int(a), 10000))[1]
             elif o == '-s':
-                nosync=True
+                nosync = True
             elif o == '-m':
-                nometasync=True
+                nometasync = True
+            elif o == '-r':
+                rebuild = True
             elif o == '-l':
                 logspec = a
             elif o == '-t':
@@ -1018,6 +1022,8 @@ def main():
                 buflen = int(a)
             elif o == '-h':
                 usage(fh=sys.stdout)
+            else:
+                raise RuntimeError(o)
     except (KeyError, ValueError):
         usage()
 
@@ -1051,7 +1057,7 @@ def main():
 
     # initialize the collection up front (which will re-create if missing)
     # before we turn on the web server
-    col = Collection(path, create=True, graph_opts=graph_opts)
+    col = Collection(path, create=True, rebuild=rebuild, graph_opts=graph_opts)
     col.close()
 
     def _syncd():
