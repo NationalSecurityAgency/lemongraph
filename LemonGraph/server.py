@@ -1,5 +1,6 @@
 from . import Serializer, Node, Edge, Adapters, QuerySyntaxError, merge_values
 from .collection import Collection, uuid_to_utc
+from .lock import Lock
 
 import atexit
 from collections import deque, defaultdict, namedtuple
@@ -115,6 +116,11 @@ class Handler(HTTPMethods):
             atexit.register(collection.close)
         return collection
 
+    @lazy
+    def lock(self):
+        global lock
+        return lock
+
     @property
     def content_type(self):
         try:
@@ -200,17 +206,35 @@ class Handler(HTTPMethods):
                     raise HTTPError(400, 'Bad datetime string for %s: %s' % (created, s))
         return filter
 
+    def graph(self, uuid, locked=None, **kwargs):
+        if locked is None:
+            with self.lock.shared(uuid) as locked:
+                g = self.graph(uuid, locked=locked, **kwargs)
+            return g
+
+        kwargs.update(self.creds)
+        try:
+            return self.collection.graph(uuid, **kwargs)
+        except (IOError, OSError) as e:
+            if e.errno is errno.EPERM:
+                raise HTTPError(403, str(e))
+            elif e.errno is errno.ENOSPC:
+                raise HTTPError(507, str(e))
+            raise HTTPError(404, "Backend graph for %s is inaccessible: %s" % (uuid, str(e)))
+
+    def tmp_graph(self, uuid):
+        fd, path = tempfile.mkstemp(dir=self.collection.dir, suffix=".db", prefix="tmp_%s_" % uuid)
+        name = os.path.basename(path)
+        return (fd, name, path)
+
+    msgpack = Serializer.msgpack()
+    def kv(self, txn):
+        return txn.kv('lg.restobjs', serialize_value=self.msgpack)
+
 def graphtxn(write=False, create=False, excl=False, on_success=None, on_failure=None):
     def decorator(func):
         def wrapper(self, _, uuid, *args, **kwargs):
-            try:
-                g = self.collection.graph(uuid, readonly=not write, create=create, excl=excl, **self.creds)
-            except (IOError, OSError) as e:
-                if e.errno is errno.EPERM:
-                    raise HTTPError(403, str(e))
-                elif e.errno is errno.ENOSPC:
-                    raise HTTPError(507, str(e))
-                raise HTTPError(404, "Backend graph for %s is inaccessible: %s" % (uuid, str(e)))
+            g = self.graph(uuid, readonly=not write, create=create, excl=excl)
             success = None
             try:
                 with g.transaction(write=write) as txn:
@@ -405,7 +429,7 @@ class Graph_Root(_Input, _Streamy):
     def __query_graphs(self, uuids, queries, qtoc):
         for uuid in uuids:
             try:
-                with self.collection.graph(uuid, readonly=True, create=False, hook=False) as g:
+                with self.graph(uuid, readonly=True, create=False, hook=False) as g:
                     with g.transaction(write=False) as txn:
                         try:
                             gen = txn.mquery(queries)
@@ -426,42 +450,49 @@ class Graph_UUID(_Input, _Streamy):
     path = ('graph', UUID,)
     inf = float('Inf')
 
-    @graphtxn(write=True)
-    def delete(self, g, txn, _, uuid):
-        self.collection.drop(uuid)
+    def delete(self, _, uuid):
+        with self.lock.exclusive(uuid) as locked:
+            # opening the graph checks user/role perms
+            with self.graph(uuid, readonly=True, create=False, locked=locked) as g:
+                self.collection.drop(uuid)
 
     def put(self, _, uuid):
-        db = '%s.db' % uuid
-        (fd, name) = tempfile.mkstemp(dir=".", suffix=".db", prefix="tmp_%s_" % uuid)
-        fh = os.fdopen(fd,'wb')
-        bytes = 0
-        try:
-            if os.access(db, os.F_OK):
-                raise IOError('graph already exists')
-            while True:
-                data = self.body.read(BLOCKSIZE)
-                if len(data) == 0:
-                    break
-                bytes += len(data)
-                fh.write(data)
-            fh.close()
-        except Exception as e:
-            os.unlink(name)
-            raise HTTPError(409, "Upload for %s failed: %s" % (uuid, repr(e)))
-        finally:
-            fh.close()
+        target = self.collection.graph_path(uuid)
+        with self.lock.exclusive(uuid):
+            if os.access(target, os.F_OK):
+                raise HTTPError(409, "Upload for %s failed: %s" % (uuid, 'already exists'))
+            try:
+                (fd, name, path) = self.tmp_graph(uuid)
+            except Exception as e:
+                raise HTTPError(409, "Upload for %s failed: %s" % (uuid, str(e)))
 
-        try:
-            with collection.graph(name, readonly=True, hook=False, create=False) as g:
-                os.link(name, db)
-        except Exception as e:
-            raise HTTPError(409, "Upload for %s failed: %s" % (uuid, repr(e)))
-        finally:
-            for x in (name, "%s-lock" % name):
-                try:
-                    os.unlink(x)
-                except:
+            cleanup = deque([
+                lambda: os.unlink('%s-lock' % path),
+                lambda: os.unlink(path),
+            ])
+            try:
+                fh = os.fdopen(fd, 'wb')
+                cleanup.appendleft(fh.close)
+                while True:
+                    data = self.body.read(BLOCKSIZE)
+                    if len(data) == 0:
+                        break
+                    fh.write(data)
+                cleanup.popleft()() # fh.close()
+                with self.collection.graph(name, readonly=True, hook=False, create=False) as g:
                     pass
+                os.rename(path, target)
+                cleanup.pop() # remove os.unlink(path)
+                cleanup.append(lambda: os.unlink('%s-lock' % target))
+            except Exception as e:
+                os.unlink(name)
+                raise HTTPError(409, "Upload for %s failed: %s" % (uuid, repr(e)))
+            finally:
+                for x in cleanup:
+                    try:
+                        x()
+                    except:
+                        pass
 
     def _snapshot(self, g, uuid):
         self.res.headers.set('Content-Type', 'application/octet-stream')
@@ -595,14 +626,64 @@ class Graph_UUID_Status(Handler):
 class Reset_UUID(_Input, Handler):
     path = ('reset', UUID,)
 
-    @graphtxn(write=True)
-    def put(self, g, txn, _, uuid):
-        seed = None
-        for seed in SeedTracker(txn).seeds:
-            break
-        txn.reset()
-        if seed is not None:
-            self.do_input(txn, uuid, data=seed)
+    default_keep = {
+        'seeds': 1,
+        'kv': True,
+    }
+
+    def put(self, _, uuid):
+        (fd, dotuuid, path) = self.tmp_graph(uuid)
+        os.close(fd)
+        with self.lock.exclusive(uuid) as locked:
+            try:
+                with self.graph(uuid, readonly=True, locked=locked) as g1, self.collection.graph(dotuuid, create=True, hook=False) as g2:
+                    with g1.transaction(write=False) as t1, g2.transaction(write=True) as t2:
+                        keep = self.input()
+                        if keep is None:
+                            keep = self.default_keep
+
+                        if keep.get('kv',False):
+                            self.clone_kv(t1, t2)
+
+                        seeds = keep.get('seeds', None)
+                        if seeds:
+                            self.clone_seeds(uuid, t1, t2, seeds)
+                    p1 = g1.path
+                    p2 = g2.path
+                for p in (p1, p2):
+                    try:
+                        # fixme
+                        os.unlink('%s-lock' % p)
+                    except OSError as e:
+                        pass
+                os.rename(p2, p1)
+                # bypass creds check, allow hooks to run
+                self.collection.remove(uuid)
+                with self.collection.graph(uuid, readonly=True):
+                    pass
+            except (IOError, OSError) as e:
+                if e.errno is errno.EPERM:
+                    raise HTTPError(403, str(e))
+                elif e.errno is errno.ENOSPC:
+                    raise HTTPError(507, str(e))
+                raise HTTPError(404, "Reset failed for graph %s: %s" % (uuid, repr(e)))
+
+    def clone_kv(self, src, dst):
+        try:
+            s = self.kv(src)
+        except KeyError:
+            return
+        d = self.kv(dst)
+        for k, v in s.iteritems():
+            d[k] = v
+
+    def clone_seeds(self, uuid, src, dst, limit):
+        i = 0
+        for seed in SeedTracker(src).seeds:
+            self.do_input(dst, uuid, data=seed)
+            i += 1
+            if i is limit:
+                break
 
 class D3_UUID(_Streamy, Handler):
     path = ('d3', UUID)
@@ -684,7 +765,7 @@ class Graph_Exec(_Input, _Streamy):
     def _txns_uuids(self, uuids):
         for uuid in uuids:
             try:
-                with self.collection.graph(uuid, readonly=True, create=False, hook=False) as g:
+                with self.graph(uuid, readonly=True, create=False, hook=False) as g:
                     with g.transaction(write=False) as txn:
                         yield txn, uuid
             except:
@@ -767,13 +848,7 @@ class Graph_UUID_Edge_ID(_Input):
         data['ID'] = ID
         self.do_edge(txn, data)
 
-class _KV(Handler):
-    msgpack = Serializer.msgpack()
-
-    def kv(self, txn):
-        return txn.kv('lg.restobjs', serialize_value=self.msgpack)
-
-class KV_UUID(_KV):
+class KV_UUID(Handler):
     path = ('kv', UUID)
 
     @graphtxn(write=False)
@@ -820,7 +895,7 @@ class KV_UUID(_KV):
         for k in kv.iterkeys():
             del kv[k]
 
-class KV_UUID_Key(_KV):
+class KV_UUID_Key(Handler):
     path = ('kv', UUID, STRING)
 
     @graphtxn(write=False)
@@ -1071,6 +1146,9 @@ def main():
 
     global collection
     collection = None
+
+    global lock
+    lock = Lock('%s.lock' % path)
 
     Server(collection_path=path, graph_opts=graph_opts, extra_procs={'syncd': _syncd}, host=ip, port=port, spawn=workers, timeout=timeout, buflen=buflen)
 
