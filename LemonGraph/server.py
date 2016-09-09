@@ -225,7 +225,8 @@ class Handler(HTTPMethods):
     def tmp_graph(self, uuid):
         fd, path = tempfile.mkstemp(dir=self.collection.dir, suffix=".db", prefix="tmp_%s_" % uuid)
         name = os.path.basename(path)
-        return (fd, name, path)
+        dbname = name[:-3]
+        return (fd, name, dbname, path)
 
     msgpack = Serializer.msgpack()
     def kv(self, txn):
@@ -462,7 +463,7 @@ class Graph_UUID(_Input, _Streamy):
             if os.access(target, os.F_OK):
                 raise HTTPError(409, "Upload for %s failed: %s" % (uuid, 'already exists'))
             try:
-                (fd, name, path) = self.tmp_graph(uuid)
+                (fd, name, dbname, path) = self.tmp_graph(uuid)
             except Exception as e:
                 raise HTTPError(409, "Upload for %s failed: %s" % (uuid, str(e)))
 
@@ -479,7 +480,7 @@ class Graph_UUID(_Input, _Streamy):
                         break
                     fh.write(data)
                 cleanup.popleft()() # fh.close()
-                with self.collection.graph(name, readonly=True, hook=False, create=False) as g:
+                with self.collection.graph(dbname, readonly=True, hook=False, create=False) as g:
                     pass
                 os.rename(path, target)
                 cleanup.pop() # remove os.unlink(path)
@@ -632,12 +633,15 @@ class Reset_UUID(_Input, Handler):
     }
 
     def put(self, _, uuid):
-        (fd, dotuuid, path) = self.tmp_graph(uuid)
-        os.close(fd)
         with self.lock.exclusive(uuid) as locked:
+            (fd, name, dbname, path) = self.tmp_graph(uuid)
+            os.close(fd)
+            cleanup = [lambda: os.unlink(path)]
             try:
-                with self.graph(uuid, readonly=True, locked=locked) as g1, self.collection.graph(dotuuid, create=True, hook=False) as g2:
+                with self.graph(uuid, readonly=True, locked=locked) as g1, self.collection.graph(dbname, create=True, hook=False) as g2:
                     with g1.transaction(write=False) as t1, g2.transaction(write=True) as t2:
+                        # fixme
+                        cleanup.append(lambda: os.unlink('%s-lock' % path))
                         keep = self.input()
                         if keep is None:
                             keep = self.default_keep
@@ -648,15 +652,15 @@ class Reset_UUID(_Input, Handler):
                         seeds = keep.get('seeds', None)
                         if seeds:
                             self.clone_seeds(uuid, t1, t2, seeds)
-                    p1 = g1.path
-                    p2 = g2.path
-                for p in (p1, p2):
-                    try:
-                        # fixme
-                        os.unlink('%s-lock' % p)
-                    except OSError as e:
-                        pass
-                os.rename(p2, p1)
+                    target = g1.path
+                cleanup.pop()() # unlink(path-lock)
+                try:
+                    # fixme
+                    os.unlink('%s-lock' % target)
+                except OSError:
+                    pass
+                os.rename(path, target)
+                cleanup.pop() # unlink(path)
                 # bypass creds check, allow hooks to run
                 self.collection.remove(uuid)
                 with self.collection.graph(uuid, readonly=True):
@@ -667,6 +671,12 @@ class Reset_UUID(_Input, Handler):
                 elif e.errno is errno.ENOSPC:
                     raise HTTPError(507, str(e))
                 raise HTTPError(404, "Reset failed for graph %s: %s" % (uuid, repr(e)))
+            finally:
+                for x in cleanup:
+                    try:
+                        x()
+                    except:
+                        pass
 
     def clone_kv(self, src, dst):
         try:
