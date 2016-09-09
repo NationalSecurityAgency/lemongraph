@@ -393,12 +393,16 @@ class Service(object):
                 raise HTTPError(405, "Unsupported method: %s" % req.method, headers=[('Allow', cursor.allowed)])
             else:
                 raise HTTPError(400, "Invalid endpoint: " + str(req.path))
+
+        body = None
         try:
             h.init(req, res)
             body = handler(*req.components)
-        except HTTPError:
-            raise
         except Exception as e:
+            if isinstance(body, generator):
+                body.close()
+            if isinstance(e, HTTPError):
+                raise
             info = sys.exc_info()
             log.error('Unhandled exception: %s', traceback.print_exception(*info))
             raise HTTPError(500, "Unhandled exception in handler: %s" % repr(e))
@@ -414,7 +418,12 @@ class Service(object):
                     break
         self.req = req
         self.res = res
-        body_handler(body)
+        try:
+            body_handler(body)
+        except:
+            if isinstance(body, generator):
+                body.close()
+            raise
 
     @lazy
     def jump(self):
