@@ -197,6 +197,7 @@ class Handler(HTTPMethods):
     def graphs_filter(self):
         filter = self.creds
         filter['enabled'] = True if 'enabled' in self.params else None
+        filter['filters'] = self.params.get('filter', None)
         for created in ('created_after', 'created_before'):
             s = self.param(created, None)
             if s:
@@ -743,7 +744,7 @@ class D3_UUID(_Streamy, Handler):
 
 class Graph_Exec(_Input, _Streamy):
     path = ('graph', 'exec')
-    eat_params = ('enabled', 'user', 'role', 'created_after', 'created_before')
+    eat_params = ('enabled', 'user', 'role', 'created_after', 'created_before', 'filter')
 
     def post(self, _, __):
         if self.content_type != 'application/python':

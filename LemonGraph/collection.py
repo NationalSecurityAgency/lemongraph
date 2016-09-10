@@ -13,7 +13,7 @@ import uuid
 from lazy import lazy
 from pysigset import suspended_signals
 
-from . import Graph, Serializer, Transaction, Hooks, dirlist, Indexer
+from . import Graph, Serializer, Transaction, Hooks, dirlist, Indexer, Query
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
@@ -137,7 +137,16 @@ class Context(object):
             for uuid, status in all:
                 yield uuid, status
 
-    def graphs(self, enabled=None, user=None, roles=None, created_before=None, created_after=None):
+    def _filter_objs(self, gen, filters):
+        filters = map(lambda pat: 'n(%s)' % pat, filters)
+        qf = Query(filters)
+        for output in gen:
+            vgen = qf.validate((output,))
+            for f, _ in vgen:
+                yield output
+                vgen.close()
+
+    def graphs(self, enabled=None, user=None, roles=None, created_before=None, created_after=None, filters=None):
         gen = self._graphs(user, None if user is None else roles)
         if created_before is not None:
             gen = ((uuid, status) for uuid, status in gen if uuid_to_utc_ts(uuid) < created_before)
@@ -145,8 +154,10 @@ class Context(object):
             gen = ((uuid, status) for uuid, status in gen if uuid_to_utc_ts(uuid) > created_after)
         if enabled is not None:
             gen = ((uuid, status) for uuid, status in gen if status['enabled'] is enabled)
-        for uuid, status in gen:
-            yield self._status_enrich(status, uuid)
+        gen = (self._status_enrich(status, uuid) for uuid, status in gen)
+        if filters:
+            gen = self._filter_objs(gen, filters)
+        return gen
 
     def graph(self, *args, **kwargs):
         kwargs['ctx'] = self
