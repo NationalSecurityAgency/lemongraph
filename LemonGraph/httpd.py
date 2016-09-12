@@ -341,7 +341,7 @@ class Service(object):
                                 try:
                                     req = Request(conn, timeout=self.timeout)
                                     # hmm - it may not make sense to allow pipelining by default - look for magic header
-                                    if 'HTTP/1.1' == req.version and 'x-please-pipeline' not in req.headers:
+                                    if 'HTTP/1.1' == req.version and ('x-please-pipeline' not in req.headers or self.maxreqs is 0):
                                         res.headers.set('Connection', 'close')
                                     self.process(req, res)
                                 except HTTPError as e:
