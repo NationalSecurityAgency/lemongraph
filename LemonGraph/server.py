@@ -967,7 +967,7 @@ class View_UUID(Static):
     path = ('view', UUID)
 
     def get(self, _, uuid):
-        return super(View_UUID, self).get(Static.path[0], self.param('style', 'd3') + '.html')
+        return super(View_UUID, self).get(Static.path[0], self.param('style', 'd3v4') + '.html')
 
 class Favicon(Static):
     path = ('favicon.ico',)
