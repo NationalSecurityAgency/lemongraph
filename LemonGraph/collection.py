@@ -275,28 +275,44 @@ class Collection(object):
                 if found == self.VERSION:
                     return
                 log.info("upgrading index version: %d => %d", found, self.VERSION)
-        UUID = re.compile(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
+
+        log.info("rebuilding collection index ...")
         with self.context(write=True) as ctx:
             ctx.txn.reset()
-            ctx.txn['version'] = self.VERSION
-            count = 0
-            log.info("rebuilding collection index ...")
-            for x in dirlist(self.dir):
-                if len(x) != 39 or x[-3:] != '.db':
-                    continue
-                uuid = x[0:36]
-                if UUID.match(uuid):
-                    count += 1
+
+        uuids = []
+        count = 0
+        for u in self._fs_dbs():
+            uuids.append(u)
+            count += 1
+            if count % 1000:
+                continue
+
+            with self.context(write=True) as ctx:
+                for uuid in uuids:
                     try:
                         with ctx.graph(uuid, readonly=True, create=False, hook=False) as g:
                             with g.transaction(write=False) as txn:
                                 ctx.sync(uuid, txn)
                     except IOError as e:
                         log.warning('error syncing graph %s: %s', uuid, str(e))
-                    if count % 1000 == 0:
-                        log.debug("updated: %d", count)
+
+            uuids = []
             self.db.sync(force=True)
-            log.info("indexed %d graphs", count)
+            log.debug("updated: %d", count)
+
+        with self.context(write=True) as ctx:
+            ctx.txn['version'] = self.VERSION
+        log.info("indexed %d graphs", count)
+
+    def _fs_dbs(self):
+        UUID = re.compile(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
+        for x in dirlist(self.dir):
+            if len(x) != 39 or x[-3:] != '.db':
+                continue
+            uuid = x[0:36]
+            if UUID.match(uuid):
+                yield uuid
 
     def sync(self, uuid, g):
         with self.context(write=True) as ctx:
