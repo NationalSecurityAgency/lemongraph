@@ -203,6 +203,29 @@ class Chunks(object):
             yield chunk(pos)
 
 
+# because every multiprocessing.Process().start() very helpfully
+# does a waitpid(WNOHANG) across all known children, and I want
+# to use os.wait() to catch exiting children
+class Process(object):
+    def __init__(self, func):
+        sys.stdout.flush()
+        sys.stderr.flush()
+        self.pid = os.fork()
+        if self.pid == 0:
+            lib.watch_parent(signal.SIGTERM)
+            code = 1
+            try:
+                func()
+                code = 0
+            finally:
+                sys.stdout.flush()
+                sys.stderr.flush()
+                os._exit(code)
+
+    def terminate(self, sig=signal.SIGTERM):
+        os.kill(self.pid, sig)
+
+
 class Service(object):
     def __init__(self, handlers=None, spawn=1, maxreqs=500, sock=None, host=None, port=None, timeout=10, extra_procs=None, buflen=1048576):
         if not spawn:
@@ -268,11 +291,7 @@ class Service(object):
         log.info("+master(%d): listening on %s:%d", os.getpid(), ip, port)
 
         def spawn(label, target):
-            def target_wrapper():
-                lib.watch_parent(signal.SIGTERM)
-                target()
-            proc = multiprocessing.Process(target=target_wrapper)
-            proc.start()
+            proc = Process(target)
             procs[proc.pid] = (proc, label, target)
             log.info("+%s(%d): spawned", label, proc.pid)
 
@@ -292,7 +311,6 @@ class Service(object):
                         log.info("-%s(%d): exit: %d", label, pid, status)
                     else:
                         log.warning("-%s(%d): exit: %d", label, pid, status)
-                    proc.join()
                     spawn(label, target)
                     time.sleep(0.1)
 
@@ -313,7 +331,6 @@ class Service(object):
                     log.info("-%s(%d): exit: %d", label, pid, status)
                 else:
                     log.warning("-%s(%d): exit: %d", label, pid, status)
-                proc.join()
         finally:
             log.info("-master(%d): exit: 0", os.getpid())
 
