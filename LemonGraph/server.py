@@ -425,7 +425,7 @@ class Graph_Root(_Input, _Streamy):
     def _query_graphs(self, graphs, queries):
         uniq = sorted(set(queries))
         qtoc = dict((q, i) for i, q in enumerate(uniq))
-        uuids = (graph['graph'] for graph in graphs)
+        uuids = (graph['id'] for graph in graphs)
         return self.stream([uniq], self.__query_graphs(uuids, uniq, qtoc))
 
     def __query_graphs(self, uuids, queries, qtoc):
@@ -503,7 +503,7 @@ class Graph_UUID(_Input, _Streamy):
             yield block
 
     def _dump_json(self, txn, uuid):
-        yield '{"graph":"%s","maxID":%d,"size":%d,"created":"%s","meta":' % (uuid, txn.lastID, txn.graph.size, uuid_to_utc(uuid))
+        yield '{"graph":"%s","id":"%s","maxID":%d,"size":%d,"created":"%s","meta":' % (uuid, uuid, txn.lastID, txn.graph.size, uuid_to_utc(uuid))
         yield self.dumps(dict(txn.iteritems()))
         yield ',"nodes":['
         nodes = txn.nodes()
@@ -757,7 +757,7 @@ class Graph_Exec(_Input, _Streamy):
             'HTTPError': HTTPError,
         }
         with self.collection.context(write=False) as ctx:
-            uuids = tuple(x['graph'] for x in ctx.graphs(**self.graphs_filter))
+            uuids = tuple(x['id'] for x in ctx.graphs(**self.graphs_filter))
 
         txns_uuids = self._txns_uuids(uuids)
         try:

@@ -164,7 +164,7 @@ class Context(object):
         return self._graph(*args, **kwargs);
 
     def _status_enrich(self, status, uuid):
-        output = { 'graph': uuid }
+        output = { 'graph': uuid, 'id': uuid }
         try:
             output['meta'] = self.metaDB[uuid]
         except KeyError:
