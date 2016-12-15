@@ -288,22 +288,29 @@ class Collection(object):
             if count % 1000:
                 continue
 
-            with self.context(write=True) as ctx:
-                for uuid in uuids:
-                    try:
-                        with ctx.graph(uuid, readonly=True, create=False, hook=False) as g:
-                            with g.transaction(write=False) as txn:
-                                ctx.sync(uuid, txn)
-                    except IOError as e:
-                        log.warning('error syncing graph %s: %s', uuid, str(e))
-
+            self._sync_uuids(uuids)
+            log.debug("updated: %d", count)
             uuids = []
-            self.db.sync(force=True)
+
+        if uuids:
+            self._sync_uuids(uuids)
             log.debug("updated: %d", count)
 
         with self.context(write=True) as ctx:
             ctx.txn['version'] = self.VERSION
         log.info("indexed %d graphs", count)
+
+    def _sync_uuids(self, uuids):
+        with self.context(write=True) as ctx:
+            for uuid in uuids:
+                try:
+                    with ctx.graph(uuid, readonly=True, create=False, hook=False) as g:
+                        with g.transaction(write=False) as txn:
+                            ctx.sync(uuid, txn)
+                except IOError as e:
+                    log.warning('error syncing graph %s: %s', uuid, str(e))
+
+        self.db.sync(force=True)
 
     def _fs_dbs(self):
         UUID = re.compile(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
