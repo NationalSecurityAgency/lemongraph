@@ -566,6 +566,8 @@ class Response(object):
 
 class Request(object):
     req = re.compile('^(' + '|'.join(HTTPMethods.all_methods) + ') (.+?)(?: (HTTP/[0-9\.]+))?(\r?\n)$')
+    hsplit = re.compile(':\s*')
+
     def __init__(self, sock, timeout=10):
         self.sock = sock
         self.fh = sock.makefile()
@@ -645,7 +647,7 @@ class Request(object):
                 self.sock.settimeout(None)
                 return
             try:
-                h, v = line[0:-2].split(': ', 1)
+                h, v = self.hsplit.split(line[0:-2], maxsplit=1)
             except ValueError:
                 raise Disconnected('invalid header line: ' + line[0:-2])
             self.headers.add(h, v)
