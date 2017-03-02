@@ -116,6 +116,9 @@ class Graph(object):
     def size(self):
         return int(lib.graph_size(self._graph))
 
+    def remap(self):
+        lib.graph_remap(self._graph)
+
     @builtin.property
     def updated(self):
         return bool(lib.graph_updated(self._graph))

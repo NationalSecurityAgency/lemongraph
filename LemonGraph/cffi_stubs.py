@@ -105,6 +105,7 @@ void graph_txn_abort(graph_txn_t txn);
 void graph_sync(graph_t g, int force);
 int graph_updated(graph_t g);
 size_t graph_size(graph_t g);
+void graph_remap(graph_t g);
 void graph_close(graph_t g);
 
 // fetch entities by logID

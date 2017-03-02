@@ -1341,6 +1341,10 @@ size_t graph_size(graph_t g){
 	return db_size((db_t)g);
 }
 
+void graph_remap(graph_t g){
+	db_remap((db_t)g);
+}
+
 void graph_close(graph_t g){
 	if(g)
 		db_close((db_t)g);

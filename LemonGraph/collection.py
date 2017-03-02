@@ -442,10 +442,15 @@ class Collection(object):
             resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
             maxopen = soft - pad
 
+        map_age = 0
         log.info('using %d max open graphs' % maxopen)
         while True:
             ticker.next()
             sleep(poll)
+            map_age += poll
+            if map_age >= 60:
+                self.db.remap()
+                map_age = 0
             self.db.sync(force=True)
             with self.context(write=False) as ctx:
                 try:

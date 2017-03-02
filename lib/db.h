@@ -33,6 +33,7 @@ void db_sync(db_t db, int force);
 int db_updated(db_t db);
 void db_close(db_t db);
 size_t db_size(db_t db);
+void db_remap(db_t db);
 
 // will fail if this process has active txns/snapshots
 // supplied mapsize must be a multiple of the OS pagesize

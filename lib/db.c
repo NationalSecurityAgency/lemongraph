@@ -16,6 +16,7 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<string.h>
+#include<sys/mman.h>
 #include<sys/stat.h>
 #include<unistd.h>
 
@@ -321,6 +322,18 @@ static inline int _txn_begin(db_t db, MDB_txn *parent, unsigned int flags, MDB_t
 	pthread_mutex_unlock(&db->mutex);
 
 	return r;
+}
+
+void db_remap(db_t db){
+	MDB_envinfo info;
+	int r;
+	pthread_mutex_lock(&db->mutex);
+	while(db->txns)
+		pthread_cond_wait(&db->cond, &db->mutex);
+	r = mdb_env_info(db->env, &info);
+	assert(MDB_SUCCESS == r);
+	mdb_env_set_mapsize(db->env, info.me_mapsize);
+	pthread_mutex_unlock(&db->mutex);
 }
 
 db_t db_new(const char * const path, const int flags, const int mode, int mdb_flags, int ndbi, dbi_t *dbis, size_t padsize){
