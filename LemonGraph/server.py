@@ -390,7 +390,7 @@ class _Input(Handler):
         self.do_input(txn, uuid, create=True)
         self.res.code = 201
         self.res.headers.set('Location', '/graph/' + uuid)
-        return self.dumps({ 'uuid': uuid }, pretty=True)
+        return self.dumps({ 'uuid': uuid, 'id': uuid }, pretty=True)
 
 class _Streamy(object):
     def _stream_js(self, gen):
