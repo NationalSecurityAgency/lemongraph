@@ -169,7 +169,8 @@ class Context(object):
             output['meta'] = self.metaDB[uuid]
         except KeyError:
             output['meta'] = {}
-        output['size'] = status['size']
+        for field in ('size', 'nodes_count', 'edges_count'):
+            output[field] = status[field]
         output['maxID'] = status['nextID'] - 1
         output['created'] = uuid_to_utc(uuid)
         return output
@@ -193,6 +194,8 @@ class Context(object):
         status = {}
         status['nextID'] = txn.nextID
         status['size'] = txn.graph.size
+        status['nodes_count'] = txn.nodes_count()
+        status['edges_count'] = txn.edges_count()
 
         try:
             status['enabled'] = bool(txn['enabled'])
@@ -253,7 +256,7 @@ class Context(object):
 
 class Collection(object):
     # increment on index structure changes
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self, dir, graph_opts=None, create=True, rebuild=False, **kwargs):
         self.db = None

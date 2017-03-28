@@ -1350,6 +1350,22 @@ void graph_close(graph_t g){
 		db_close((db_t)g);
 }
 
+size_t graph_nodes_count(graph_txn_t txn, logID_t beforeID){
+	size_t count = 0;
+	graph_iter_t iter = graph_nodes(txn, beforeID);
+	while(graph_iter_next(iter))
+		count++;
+	return count;
+}
+
+size_t graph_edges_count(graph_txn_t txn, logID_t beforeID){
+	size_t count = 0;
+	graph_iter_t iter = graph_edges(txn, beforeID);
+	while(graph_iter_next(iter))
+		count++;
+	return count;
+}
+
 /*
 static int _graph_string_fetchID(graph_txn_t txn, strID_t id, void **buf, size_t *len){
 	int found = 0;

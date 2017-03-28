@@ -135,6 +135,10 @@ edge_t graph_edge_lookup(graph_txn_t txn, node_t src, node_t tgt, void *type, si
 node_t graph_node_resolve(graph_txn_t txn, void *type, size_t tlen, void *val, size_t vlen);
 edge_t graph_edge_resolve(graph_txn_t txn, node_t src, node_t tgt, void *type, size_t tlen, void *val, size_t vlen);
 
+// count nodes/edges
+size_t graph_nodes_count(graph_txn_t txn, logID_t beforeID);
+size_t graph_edges_count(graph_txn_t txn, logID_t beforeID);
+
 // delete any type of graph entity
 logID_t graph_delete(graph_txn_t txn, entry_t e);
 

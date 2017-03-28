@@ -447,6 +447,12 @@ class Transaction(GraphItem):
             ret = Iterator(self, lib.graph_edges, lib.iter_next_edge, beforeID=self.b4ID(beforeID))
         return ret
 
+    def nodes_count(self, beforeID=None):
+        return lib.graph_nodes_count(self._txn, self.b4ID(beforeID))
+
+    def edges_count(self, beforeID=None):
+        return lib.graph_edges_count(self._txn, self.b4ID(beforeID))
+
     @builtin.property
     def nextID(self):
         return int(lib.graph_log_nextID(self._txn))

@@ -68,6 +68,8 @@ class TestGraph(unittest.TestCase):
     def test_load_data(self):
         with self.g.transaction(write=True) as txn:
             load_data(txn)
+            self.assertEqual(txn.nodes_count(), len(Nodes))
+            self.assertEqual(txn.edges_count(), len(Edges))
 
     def test_edges_by_type(self):
         with self.g.transaction(write=True) as txn:
