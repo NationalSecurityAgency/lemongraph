@@ -1,4 +1,4 @@
-# decorator shennanigans to bless class methods such that they can be referenced
+# decorator shenanigans to bless class methods such that they can be referenced
 # as an iterable property or called with parameters (also returns an iterable)
 class CallableIterable(object):
     def __init__(self, func, target):
