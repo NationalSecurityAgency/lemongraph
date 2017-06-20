@@ -191,11 +191,10 @@ class Context(object):
         return StatusIndex(self)
 
     def _sync_status(self, uuid, txn):
-        status = {}
-        status['nextID'] = txn.nextID
-        status['size'] = txn.graph.size
-        status['nodes_count'] = txn.nodes_count()
-        status['edges_count'] = txn.edges_count()
+        status = {'nextID': txn.nextID,
+                  'size': txn.graph.size,
+                  'nodes_count': txn.nodes_count(),
+                  'edges_count': txn.edges_count()}
 
         try:
             status['enabled'] = bool(txn['enabled'])
