@@ -30,6 +30,9 @@
 
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 
+// max log entry size is for edge_t
+#define MAX_LOGBUF (1 + esizeof(strID_t) * 2 + esizeof(logID_t) * 3)
+
 //#define debug(args...) do{ fprintf(stderr, "%d: ", __LINE__); fprintf(stderr, args); }while(0)
 //#define debug(args...) while(0);
 
@@ -378,33 +381,33 @@ static logID_t _prop_lookup(graph_txn_t txn, prop_t e, logID_t beforeID){
 static graph_iter_t _graph_entry_idx(graph_txn_t txn, int dbi, logID_t id, logID_t beforeID);
 graph_iter_t graph_iter_concat(unsigned int count, ...);
 
-static void _delete(graph_txn_t txn, const logID_t newrecID, const logID_t oldrecID){
-	uint8_t kbuf[esizeof(newrecID)], buf[esizeof(newrecID)];
-	MDB_val key = { 0, kbuf }, olddata, newdata;
-	int r, oldsize, newsize;
+static void _delete(graph_txn_t txn, const logID_t newrecID, const logID_t oldrecID, uint8_t *mem){
+	uint8_t kbuf[esizeof(newrecID)];
+	MDB_val key = { 0, kbuf }, olddata, newdata = { 1, mem };
+	int r, tail, tlen;
 	graph_iter_t iter;
 	entry_t child;
-	uint8_t *mem;
 
-	// update existing log entry
+	// update existing log entry - first fetch current
 	encode(oldrecID, kbuf, key.mv_size);
 	r = db_get((txn_t)txn, DB_LOG, &key, &olddata);
 	assert(MDB_SUCCESS == r);
 
-	oldsize = enclen(olddata.mv_data, 1);
-	newsize = 0;
-	encode(newrecID, buf, newsize);
-
-	newdata.mv_data = NULL;
-	newdata.mv_size = olddata.mv_size + (newsize - oldsize);
-
-	mem = newdata.mv_data = malloc(newdata.mv_size);
+	// copy rectype (mv_size already set to 1)
 	memcpy(mem, olddata.mv_data, 1);
-	memcpy(&mem[1], buf, newsize);
-	memcpy(&mem[newsize+1], &((uint8_t *)olddata.mv_data)[oldsize+1], 1 + olddata.mv_size - oldsize);
+
+	// fill in new nextID
+	encode(newrecID, mem, newdata.mv_size);
+
+	// append remainder of original record
+	tail = 1 + enclen(olddata.mv_data, 1);
+	tlen = olddata.mv_size - tail;
+	memcpy(&mem[newdata.mv_size], &((uint8_t *)olddata.mv_data)[tail], tlen);
+	newdata.mv_size += tlen;
+
+	// store
 	r = db_put((txn_t)txn, DB_LOG, &key, &newdata, 0);
 	assert(MDB_SUCCESS == r);
-	free(mem);
 
 	// recursively delete item properties, and edges if item is a node
 	if(GRAPH_NODE == *(uint8_t *)olddata.mv_data){
@@ -416,7 +419,7 @@ static void _delete(graph_txn_t txn, const logID_t newrecID, const logID_t oldre
 		iter = _graph_entry_idx(txn, DB_PROP_IDX, oldrecID, 0);
 	}
 	while((child = graph_iter_next(iter))){
-		_delete(txn, newrecID, child->id);
+		_delete(txn, newrecID, child->id, mem);
 		free(child);
 	}
 
@@ -431,8 +434,10 @@ static logID_t _log_append(graph_txn_t txn, uint8_t *dbuf, size_t dlen, logID_t 
 
 	id = _graph_log_nextID(txn, 1);
 
-	if(delID)
-		_delete(txn, id, delID);
+	if(delID){
+		uint8_t tmp[MAX_LOGBUF];
+		_delete(txn, id, delID, tmp);
+	}
 
 	encode(id, kbuf, key.mv_size);
 
