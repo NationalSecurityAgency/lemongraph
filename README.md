@@ -14,7 +14,7 @@ Using PyPy 4.0 on physical hardware (3ghz X5670, plenty of RAM), under a single 
 
 # Features
 
-Symas LMDB provides transactions, multi-process MVCC abilities (single writer, multple non-blocking readers), nested write transactions, and rapid non-blocking binary snapshots. We also inherit some caveats:
+Symas LMDB provides transactions, multi-process MVCC abilities (single writer, multiple non-blocking readers), nested write transactions, and rapid non-blocking binary snapshots. We also inherit some caveats:
 
 * max database mapsize has to be manually maintained, but on 64-bit platforms it is cheap to overestimate
 * transactions should only be used from the thread that created them

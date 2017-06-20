@@ -154,7 +154,7 @@ size_t graph_edges_count(graph_txn_t txn, logID_t beforeID);
 // delete any type of graph entity
 logID_t graph_delete(graph_txn_t txn, entry_t e);
 
-// iterator foo - be sure to close them before aborting or commiting a txn
+// iterator foo - be sure to close them before aborting or committing a txn
 graph_iter_t graph_nodes(graph_txn_t txn, logID_t beforeID);
 graph_iter_t graph_edges(graph_txn_t txn, logID_t beforeID);
 graph_iter_t graph_nodes_type(graph_txn_t txn, void *type, size_t tlen, logID_t beforeID);

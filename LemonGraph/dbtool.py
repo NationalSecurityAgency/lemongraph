@@ -16,7 +16,7 @@ To set ad-hoc query mode (default), simply enter: 0
 To set streaming query mode, enter a numeric start,stop tuple or a non-zero start.
 
 To query, enter one or more query patterns, joined by semi-colons.
-To force streaming or ad-hoc mode, the line may be preceeded by:
+To force streaming or ad-hoc mode, the line may be preceded by:
 	start,stop:
 or just:
 	start:
