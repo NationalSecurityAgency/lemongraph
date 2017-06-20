@@ -227,7 +227,7 @@ class Handler(HTTPMethods):
         fd, path = tempfile.mkstemp(dir=self.collection.dir, suffix=".db", prefix="tmp_%s_" % uuid)
         name = os.path.basename(path)
         dbname = name[:-3]
-        return (fd, name, dbname, path)
+        return fd, name, dbname, path
 
     msgpack = Serializer.msgpack()
     def kv(self, txn):

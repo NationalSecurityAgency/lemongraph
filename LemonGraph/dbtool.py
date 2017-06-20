@@ -36,7 +36,7 @@ def parse_range(m, default=None):
         b = int(m.group(2)) if a else 0
     except TypeError:
         b = 0
-    return (a, b)
+    return a, b
 
 def do_query(txn, query, start=0, stop=0, interactive=False):
     m = RANGE2.match(query)
