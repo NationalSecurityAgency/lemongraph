@@ -565,7 +565,7 @@ class Response(object):
         return json_encode(doc)
 
 class Request(object):
-    req = re.compile('^(' + '|'.join(HTTPMethods.all_methods) + ') (.+?)(?: (HTTP/[0-9\.]+))?(\r?\n)$')
+    req = re.compile('^(' + '|'.join(HTTPMethods.all_methods) + ') (.+?)(?: (HTTP/[0-9.]+))?(\r?\n)$')
     hsplit = re.compile(':\s*')
 
     def __init__(self, sock, timeout=10):
