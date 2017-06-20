@@ -39,7 +39,6 @@
 // quickly take unsigned numeric types and count minimum number of bytes needed to represent - for varint encoding
 #define intbytes(x) (sizeof(x) - __clz_wrapper(x) / 8)
 
-
 // encode unsigned values into buffer, advancing iter
 // ensure you have a least 9 bytes per call
 #define encode(x, buffer, iter) do{ \
@@ -49,8 +48,6 @@
 		((uint8_t *)(buffer))[iter] = ((x) >> _shift) & 0xff; \
 }while(0)
 
-#define esizeof(x) (sizeof(x)+1)
-
 // corresponding decode
 #define decode(x, buffer, iter) do{ \
 	uint8_t count = ((uint8_t *)(buffer))[iter++]; \
@@ -59,6 +56,10 @@
 	while(count--) \
 		x = (x<<8) + ((uint8_t *)(buffer))[iter++]; \
 }while(0)
+
+#define enclen(buffer, offset) (1 + ((uint8_t *)(buffer))[offset])
+
+#define esizeof(x) (sizeof(x)+1)
 
 int pack_uints(int count, uint64_t *ints, void *buffer){
 	int i, len = 0;
@@ -366,8 +367,9 @@ static logID_t _prop_lookup(graph_txn_t txn, prop_t e, logID_t beforeID){
 	encode(e->key, kbuf, klen);
 	logbuf = __lookup(txn, (entry_t)e, DB_PROP_IDX, kbuf, klen, beforeID);
 	if(logbuf){
-		klen = 1 + logbuf[0];      // skip pid
-		klen += 1 + logbuf[klen];  // skip key
+		klen = 0;
+		klen += enclen(logbuf, klen); // skip pid
+		klen += enclen(logbuf, klen); // skip key
 		decode(e->val, logbuf, klen); // pull current value
 	}
 	return e->id;
@@ -389,7 +391,7 @@ static void _delete(graph_txn_t txn, const logID_t newrecID, const logID_t oldre
 	r = db_get((txn_t)txn, DB_LOG, &key, &olddata);
 	assert(MDB_SUCCESS == r);
 
-	oldsize = 1 + ((uint8_t *)olddata.mv_data)[1];
+	oldsize = enclen(olddata.mv_data, 1);
 	newsize = 0;
 	encode(newrecID, buf, newsize);
 
@@ -1085,11 +1087,14 @@ graph_iter_t graph_iter_concat(unsigned int count, ...){
 }
 
 static logID_t _parse_idx_logID(uint8_t *buf, size_t buflen){
-	size_t i = 0;
+	size_t i = 0, len = 0;
 	logID_t id;
 
-	while(i + buf[i] + 1 != buflen)
-		i += 1 + buf[i];
+	do{
+		i += len;
+		len = enclen(buf, i);
+	}while(i + len < buflen);
+	assert(i + len == buflen);
 	decode(id, buf, i);
 	return id;
 }
