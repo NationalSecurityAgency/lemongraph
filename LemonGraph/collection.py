@@ -224,7 +224,7 @@ class Context(object):
             old_status = None
         self.statusDB[uuid] = status
 
-        return (old_status, status)
+        return old_status, status
 
     def remove(self, uuid):
         try:

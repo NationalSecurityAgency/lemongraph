@@ -217,7 +217,8 @@ class TestSerializers(unittest.TestCase):
     def test_uints(self):
         s = Serializer.uints(2)
         a = ((0, 255), (256, (1<<64)-1))
-        b = ("\x00\x01\xff", ("\x02\x01\x00\x08\xff\xff\xff\xff\xff\xff\xff\xff"))
+        b = ("\x00\x01\xff",
+             "\x02\x01\x00\x08\xff\xff\xff\xff\xff\xff\xff\xff")
         c = ((0, 255), (256, (1<<64)-1))
         for x, y, z in zip(a, b, c):
             self.assertEqual(s.encode(x), y)
@@ -226,7 +227,8 @@ class TestSerializers(unittest.TestCase):
     def test_uints_string(self):
         s = Serializer.uints(3, string=True)
         a = ((0, 255, "foo"), (256, (1<<64)-1, ""))
-        b = ("\x00\x01\xff\x01\x03foo", ("\x02\x01\x00\x08\xff\xff\xff\xff\xff\xff\xff\xff\x00"))
+        b = ("\x00\x01\xff\x01\x03foo",
+             "\x02\x01\x00\x08\xff\xff\xff\xff\xff\xff\xff\xff\x00")
         c = ((0, 255, "foo"), (256, (1<<64)-1, ""))
         for x, y, z in zip(a, b, c):
             self.assertEqual(s.encode(x), y)

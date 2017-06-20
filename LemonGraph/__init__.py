@@ -585,7 +585,7 @@ class NodeEdgeProperty(GraphItem):
     @builtin.classmethod
     def ByID(Class, txn, ID, beforeID=None, properties={}, merge=False):
         beforeID = txn.b4ID(beforeID)
-        if(ID < 1 or beforeID and ID >= beforeID):
+        if ID < 1 or beforeID and ID >= beforeID:
             raise KeyError
         return Class(txn, Class._lib_byID(txn._txn, ID), beforeID=beforeID, properties=properties, merge=merge)
 
@@ -700,7 +700,7 @@ class Deletion(NodeEdgeProperty):
         return self.next
 
     def dump(self):
-        return (self.ID, (self.code, self.next))
+        return self.ID, (self.code, self.next)
 
 
 class Node(NodeEdgeProperty):
@@ -737,7 +737,7 @@ class Node(NodeEdgeProperty):
     def _attr(txn, type=None, value=None):
         type = txn.serialize_node_type.encode(type)
         value = txn.serialize_node_value.encode(value)
-        return (type, len(type), value, len(value))
+        return type, len(type), value, len(value)
 
     @builtin.property
     def type(self):
@@ -835,7 +835,7 @@ class Node(NodeEdgeProperty):
                 yield e
 
     def dump(self):
-        return (self.ID, (self.code, self.type, self.value, self.next))
+        return self.ID, (self.code, self.type, self.value, self.next)
 
 
 class Edge(NodeEdgeProperty):
@@ -858,7 +858,7 @@ class Edge(NodeEdgeProperty):
     def _attr(txn, src=None, tgt=None, type=None, value=None):
         type = txn.serialize_edge_type.encode(type)
         value = txn.serialize_edge_value.encode(value)
-        return (src._data, tgt._data, type, len(type), value, len(value))
+        return src._data, tgt._data, type, len(type), value, len(value)
 
     @builtin.property
     def type(self):
@@ -910,7 +910,7 @@ class Edge(NodeEdgeProperty):
                     yield self.src
 
     def dump(self):
-        return (self.ID, (self.code, self.type, self.value, int(self._data.src), int(self._data.tgt), self.next))
+        return self.ID, (self.code, self.type, self.value, int(self._data.src), int(self._data.tgt), self.next)
 
 
 class Property(NodeEdgeProperty):
@@ -960,7 +960,7 @@ class Property(NodeEdgeProperty):
     def dump(self):
         # omit parentID for graph properties
         pID = (self.parentID,) if self.parentID else ()
-        return (self.ID, (self.code,) + pID + (self.key, self.value, self.next))
+        return self.ID, (self.code,) + pID + (self.key, self.value, self.next)
 
     @lazy
     def is_graph_property(self):

@@ -153,7 +153,7 @@ TYPES_MAP = {
     'boolean': bool,
     'string': str,
     'number': (float, int),
-    'array': (list),
+    'array': list,
     'object': dict,
 }
 
@@ -328,7 +328,7 @@ class MatchLGQL(object):
             m = reg.match(self.filter, self.pos)
             if m is not None:
                 self.pos = m.end()
-                return (m, reg)
+                return m, reg
 
         raise self.syntax_error('unexpected sequence')
 
@@ -571,12 +571,12 @@ class MatchLGQL(object):
         for p in self.matches:
             pre = dict( (key, val) for key, val in p.iteritems() if key != 'tests' )
             if p['tests']:
-                print >>fh, '\t%s:[' % (pre)
+                print >>fh, '\t%s:[' % pre
                 for test in p['tests']:
                     print >>fh, "\t\t", test, ","
                 print >>fh, "\t],"
             else:
-                print >>fh, '\t%s:[],' % (pre)
+                print >>fh, '\t%s:[],' % pre
         print >>fh, ']'
 
     def is_valid(self, obj, idx=0, skip_fudged=False):
