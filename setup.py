@@ -89,7 +89,7 @@ def fetch_external():
     fetch_js()
 
 
-reqs = ['cffi>=1.0', 'lazy', 'msgpack-python', 'pysigset', 'python-dateutil']
+reqs = ['cffi>=1.0.1,<1.11', 'lazy>=1.0,<1.4', 'msgpack-python>=0.2.0,<0.5', 'pysigset>=0.2,<0.4', 'python-dateutil>=1.4,<2.7']
 if platform.python_implementation() == 'CPython':
     reqs.append('ujson')
 
