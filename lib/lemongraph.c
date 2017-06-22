@@ -570,32 +570,6 @@ static void _prop_index(graph_txn_t txn, prop_t e){
 	cursor_close(idx);
 }
 
-
-static void _node_unpack(graph_txn_t txn, node_t e, const uint8_t *buf){
-	int i = 0;
-	decode(e->type, buf, i);
-	decode(e->val,  buf, i);
-}
-
-static void _edge_unpack(graph_txn_t txn, edge_t e, const uint8_t *buf){
-	int i = 0;
-	decode(e->type, buf, i);
-	decode(e->val,  buf, i);
-	decode(e->src,  buf, i);
-	decode(e->tgt,  buf, i);
-}
-
-static void _prop_unpack(graph_txn_t txn, prop_t e, const uint8_t *buf){
-	int i = 0;
-	decode(e->pid, buf, i);
-	decode(e->key, buf, i);
-	decode(e->val, buf, i);
-}
-
-static void _deletion_unpack(graph_txn_t txn, deletion_t e, const uint8_t *buf){
-	return;
-}
-
 static logID_t __prop_resolve(graph_txn_t txn, prop_t e, logID_t beforeID, int readonly){
 	// stash the old value, in case we cared
 	strID_t val = e->val;
@@ -638,12 +612,6 @@ static logID_t __edge_resolve(graph_txn_t txn, edge_t e, logID_t beforeID, int r
 }
 
 
-typedef logID_t (*resolve_func)(graph_txn_t txn, edge_t e, logID_t beforeID, int readonly);
-typedef logID_t (*lookup_func)(graph_txn_t txn, entry_t e, logID_t beforeID);
-typedef logID_t (*append_func)(graph_txn_t txn, entry_t e, logID_t delID);
-typedef void (*index_func)(graph_txn_t txn, entry_t e);
-typedef void (*unpack_func)(graph_txn_t txn, entry_t e, const uint8_t *buf);
-
 static node_t _node_resolve(graph_txn_t txn, void *type, size_t tlen, void *val, size_t vlen, logID_t beforeID, int readonly){
 	node_t e = (node_t) malloc(sizeof(*e));
 	e->rectype = GRAPH_NODE;
@@ -685,13 +653,7 @@ static prop_t _prop_resolve(graph_txn_t txn, entry_t parent, void *key, size_t k
 }
 
 entry_t graph_entry(graph_txn_t txn, const logID_t id){
-	static const  unpack_func unpack[] = {
-		[GRAPH_DELETION] = (unpack_func)_deletion_unpack,
-		[GRAPH_NODE]     = (unpack_func)_node_unpack,
-		[GRAPH_EDGE]     = (unpack_func)_edge_unpack,
-		[GRAPH_PROP]     = (unpack_func)_prop_unpack,
-	};
-	static const size_t recsizes[] = {
+	static const int recsizes[] = {
 		[GRAPH_DELETION] = sizeof(struct entry_t),
 		[GRAPH_NODE]     = sizeof(struct node_t),
 		[GRAPH_EDGE]     = sizeof(struct edge_t),
@@ -704,12 +666,30 @@ entry_t graph_entry(graph_txn_t txn, const logID_t id){
 	encode(id, buf, key.mv_size);
 	r = db_get((txn_t)txn, DB_LOG, &key, &data);
 	if(MDB_SUCCESS == r){
-		int klen = 1, rectype = *(uint8_t *)data.mv_data;
+		const int rectype = *(uint8_t *)data.mv_data;
+		assert(rectype < sizeof(recsizes) / sizeof(*recsizes));
+		int klen = 1;
 		e = (entry_t) malloc(recsizes[rectype]);
 		e->id = id;
 		e->rectype = rectype;
 		decode(e->next, data.mv_data, klen);
-		unpack[rectype](txn, e, &((uint8_t *)data.mv_data)[klen]);
+		switch(rectype){
+			case GRAPH_NODE:
+				decode(((node_t)e)->type, data.mv_data, klen);
+				decode(((node_t)e)->val,  data.mv_data, klen);
+				break;
+			case GRAPH_EDGE:
+				decode(((edge_t)e)->type, data.mv_data, klen);
+				decode(((edge_t)e)->val,  data.mv_data, klen);
+				decode(((edge_t)e)->src,  data.mv_data, klen);
+				decode(((edge_t)e)->tgt,  data.mv_data, klen);
+				break;
+			case GRAPH_PROP:
+				decode(((prop_t)e)->pid,  data.mv_data, klen);
+				decode(((prop_t)e)->key,  data.mv_data, klen);
+				decode(((prop_t)e)->val,  data.mv_data, klen);
+				break;
+		}
 	}
 	return e;
 }
@@ -1233,15 +1213,18 @@ graph_iter_t graph_node_edges_dir(graph_txn_t txn, node_t node, unsigned int dir
 }*/
 
 graph_iter_t graph_node_edges_dir(graph_txn_t txn, node_t node, unsigned int direction, logID_t beforeID){
-	typedef graph_iter_t (*edges_func)(graph_txn_t, node_t, logID_t);
-	const static edges_func edges_x[] = {
-		[0]              = graph_node_edges,
-		[GRAPH_DIR_IN]   = graph_node_edges_in,
-		[GRAPH_DIR_OUT]  = graph_node_edges_out,
-		[GRAPH_DIR_BOTH] = graph_node_edges,
-	};
-	assert(direction <= GRAPH_DIR_BOTH);
-	return edges_x[direction](txn, node, beforeID);
+	graph_iter_t it;
+	switch(direction){
+		case GRAPH_DIR_IN:
+			it = graph_node_edges_in(txn, node, beforeID);
+			break;
+		case GRAPH_DIR_OUT:
+			it = graph_node_edges_out(txn, node, beforeID);
+			break;
+		default:
+			it = graph_node_edges(txn, node, beforeID);
+	}
+	return it;
 }
 
 // lookup edges within a node by type
@@ -1277,15 +1260,18 @@ graph_iter_t graph_node_edges_type(graph_txn_t txn, node_t node, void *type, siz
 }
 
 graph_iter_t graph_node_edges_dir_type(graph_txn_t txn, node_t node, unsigned int direction, void *type, size_t tlen, logID_t beforeID){
-	typedef graph_iter_t (*edges_func)(graph_txn_t, node_t, void *, size_t, logID_t);
-	const static edges_func edges_x[] = {
-		[0]              = graph_node_edges_type,
-		[GRAPH_DIR_IN]   = graph_node_edges_type_in,
-		[GRAPH_DIR_OUT]  = graph_node_edges_type_out,
-		[GRAPH_DIR_BOTH] = graph_node_edges_type,
-	};
-	assert(direction <= GRAPH_DIR_BOTH);
-	return edges_x[direction](txn, node, type, tlen, beforeID);
+	graph_iter_t it;
+	switch(direction){
+		case GRAPH_DIR_IN:
+			it = graph_node_edges_type_in(txn, node, type, tlen, beforeID);
+			break;
+		case GRAPH_DIR_OUT:
+			it = graph_node_edges_type_out(txn, node, type, tlen, beforeID);
+			break;
+		default:
+			it = graph_node_edges_type(txn, node, type, tlen, beforeID);
+	}
+	return it;
 }
 
 graph_iter_t graph_props(graph_txn_t txn, logID_t beforeID){
