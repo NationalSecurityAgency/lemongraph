@@ -1,2 +1,2 @@
-cffi
-lazy
+cffi==1.10.0
+lazy==1.3
