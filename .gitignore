@@ -5,6 +5,7 @@
 *-lock
 *.swp
 */__pycache__
+.idea/*
 build
 dist
 LemonGraph.egg-info
