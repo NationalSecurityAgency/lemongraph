@@ -6,3 +6,4 @@ include LICENSE
 include Makefile
 include README.md
 include RESTAPI
+include requirements.txt
