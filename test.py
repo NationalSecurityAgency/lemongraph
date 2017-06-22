@@ -1,7 +1,6 @@
 import os
 import tempfile
 import unittest
-import uuid
 
 from LemonGraph import Graph, Serializer, dirlist, Query
 
@@ -9,14 +8,14 @@ node = lambda i: dict((k, Nodes[i][k]) for k in ('type', 'value'))
 edge = lambda i: dict((k, Edges[i][k]) for k in ('type', 'value', 'src', 'tgt'))
 
 Nodes = [
-    { 'type': 'foo', 'value': 'bar', 'properties': { 'np1k': 'np1v' } },
-    { 'type': 'foo', 'value': 'baz', 'properties': { 'np2k': 'np2v' } },
-    { 'type': 'goo', 'value': 'gaz', 'properties': { 'np3k': 'np3v' } },
+    {'type': 'foo', 'value': 'bar', 'properties': {'np1k': 'np1v'}},
+    {'type': 'foo', 'value': 'baz', 'properties': {'np2k': 'np2v'}},
+    {'type': 'goo', 'value': 'gaz', 'properties': {'np3k': 'np3v'}},
 ]
 
 Edges = [
-    { 'src': node(0), 'tgt': node(1), 'type': 'edge', 'value': 'e1' },
-    { 'src': node(1), 'tgt': node(2), 'type': 'edge2', 'value': 'e2' },
+    {'src': node(0), 'tgt': node(1), 'type': 'edge', 'value': 'e1'},
+    {'src': node(1), 'tgt': node(2), 'type': 'edge2', 'value': 'e2'},
 ]
 
 
@@ -30,6 +29,7 @@ def load_data(txn):
         cpy['tgt'] = txn.node(**cpy['tgt'])
         txn.edge(**cpy)
 
+
 class TestGraph(unittest.TestCase):
     # each test_foo() method is wrapped w/ setup/teardown around it, so each test has a fresh graph
     def setUp(self):
@@ -39,7 +39,6 @@ class TestGraph(unittest.TestCase):
 
     def tearDown(self):
         self.g.delete()
-
 
     def test_commit(self):
         with self.g.transaction(write=True) as txn:
@@ -103,7 +102,7 @@ class TestGraph(unittest.TestCase):
 
         with self.g.transaction(write=False) as txn:
             chains = 0
-            for chain in txn.query("n(type='foo')->e()-n()"):
+            for _ in txn.query("n(type='foo')->e()-n()"):
                 chains += 1
             self.assertTrue(chains)
 
@@ -116,11 +115,11 @@ class TestGraph(unittest.TestCase):
     def test_kv(self):
         with self.g.transaction(write=True) as txn:
             b = txn.kv('foo')
-            keys =('fon', 'foo', 'foobar', 'foobaz', 'fom')
+            keys = ('fon', 'foo', 'foobar', 'foobaz', 'fom')
             for i, key in enumerate(('fo', 'fon', 'foo', 'foobar', 'foobaz', 'fom')):
                 b[key] = i
             res = tuple(b.iterkeys(pfx='foo'))
-            self.assertEqual( keys[1:-1], res )
+            self.assertEqual(keys[1:-1], res)
             txn.abort()
 
         with self.g.transaction(write=True) as txn:
@@ -184,7 +183,7 @@ class TestGraph(unittest.TestCase):
 
     def test_reset(self):
         with self.g.transaction(write=True) as txn:
-            n = txn.node(type="foo", value="bar")
+            txn.node(type="foo", value="bar")
             nextID = txn.nextID
         with self.g.transaction(write=True) as txn:
             self.assertEqual(nextID, txn.nextID)
@@ -195,7 +194,6 @@ class TestGraph(unittest.TestCase):
 
 
 class TestSerializers(unittest.TestCase):
-
     def test_default(self):
         s = Serializer()
         a = (None, 'foo', 1)
@@ -207,32 +205,34 @@ class TestSerializers(unittest.TestCase):
 
     def test_uint(self):
         s = Serializer.uint()
-        a = (0, 255, 256, (1<<64)-1)
-        b = ("\x00", "\x01\xff", "\x02\x01\x00", "\x08\xff\xff\xff\xff\xff\xff\xff\xff")
-        c = (0, 255, 256, (1<<64)-1)
+        a = (0, 255, 256, (1 << 64) - 1)
+        b = ("\x00", "\x01\xff",
+             "\x02\x01\x00", "\x08\xff\xff\xff\xff\xff\xff\xff\xff")
+        c = (0, 255, 256, (1 << 64) - 1)
         for x, y, z in zip(a, b, c):
             self.assertEqual(s.encode(x), y)
             self.assertEqual(s.decode(y), z)
 
     def test_uints(self):
         s = Serializer.uints(2)
-        a = ((0, 255), (256, (1<<64)-1))
+        a = ((0, 255), (256, (1 << 64) - 1))
         b = ("\x00\x01\xff",
              "\x02\x01\x00\x08\xff\xff\xff\xff\xff\xff\xff\xff")
-        c = ((0, 255), (256, (1<<64)-1))
+        c = ((0, 255), (256, (1 << 64) - 1))
         for x, y, z in zip(a, b, c):
             self.assertEqual(s.encode(x), y)
             self.assertEqual(s.decode(y), z)
 
     def test_uints_string(self):
         s = Serializer.uints(3, string=True)
-        a = ((0, 255, "foo"), (256, (1<<64)-1, ""))
+        a = ((0, 255, "foo"), (256, (1 << 64) - 1, ""))
         b = ("\x00\x01\xff\x01\x03foo",
              "\x02\x01\x00\x08\xff\xff\xff\xff\xff\xff\xff\xff\x00")
-        c = ((0, 255, "foo"), (256, (1<<64)-1, ""))
+        c = ((0, 255, "foo"), (256, (1 << 64) - 1, ""))
         for x, y, z in zip(a, b, c):
             self.assertEqual(s.encode(x), y)
             self.assertEqual(s.decode(y), z)
+
 
 class TestDL(unittest.TestCase):
     def test_dirlist(self):
@@ -244,6 +244,7 @@ class TestDL(unittest.TestCase):
                 dots += 2
         self.assertEqual(dots, 3)
 
+
 class TestQL(unittest.TestCase):
     chains = (
         ({'foo': 'bar'},),
@@ -251,9 +252,9 @@ class TestQL(unittest.TestCase):
     )
 
     matches = {
-        'n()':               [0],
-        'e()':               [0],
-        'n(foo~/^bar$/)':    [0],
+        'n()': [0],
+        'e()': [0],
+        'n(foo~/^bar$/)': [0],
         'n()-n(type="foo")': [1],
     }
 
@@ -261,12 +262,13 @@ class TestQL(unittest.TestCase):
         results = {}
         q = Query(self.matches.keys())
         for i, chain in enumerate(self.chains):
-            for p, chain in q.validate(chain):
+            for p, _ in q.validate(chain):
                 try:
                     results[p].append(i)
                 except KeyError:
                     results[p] = [i]
         self.assertDictEqual(self.matches, results)
+
 
 if __name__ == '__main__':
     unittest.main()
