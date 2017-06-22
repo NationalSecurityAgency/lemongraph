@@ -4,12 +4,10 @@ import stat
 import subprocess
 import sys
 
-from distutils.command.build   import build
-from distutils.command.install import install
-from distutils.command.sdist   import sdist
 from setuptools import setup
 
 from lg_cffi_setup import keywords_with_side_effects
+
 
 def git_submodule_init():
     lmdb_src = os.path.sep.join(('deps', 'lmdb'))
@@ -29,31 +27,34 @@ def git_submodule_init():
         cmd = ' '.join(e.cmd)
         raise RuntimeError('git cmd failed (%s) - please manually clone %s into %s' % (cmd, lmdb_repo, lmdb_src))
 
+
 def do_curl(url):
-    print >>sys.stderr, "Fetching: %s" % url
+    print >> sys.stderr, "Fetching: %s" % url
     cmd = ('curl', '-L', url)
     p = subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE)
-    print >>sys.stderr, url
+    print >> sys.stderr, url
     blen = 0
     for chunk in p.stdout:
         blen += len(chunk)
         yield chunk
     p.wait()
     if not blen or p.returncode:
-        raise RuntimeError('curl cmd failed (%s) - please manually fetch %s into deps (%d, %s)' % (cmd, url, blen, p.returncode))
+        raise RuntimeError(
+            'curl cmd failed (%s) - please manually fetch %s into deps (%d, %s)' % (cmd, url, blen, p.returncode))
+
 
 def fetch_js():
     libs = {
-        'd3.v3.min.js':   'https://d3js.org/d3.v3.min.js',
-        'd3.v4.min.js':   'https://d3js.org/d3.v4.min.js',
+        'd3.v3.min.js': 'https://d3js.org/d3.v3.min.js',
+        'd3.v4.min.js': 'https://d3js.org/d3.v4.min.js',
         'svg-crowbar.js': 'https://nytimes.github.io/svg-crowbar/svg-crowbar.js',
     }
     for js, url in libs.iteritems():
-        target = os.path.sep.join(('LemonGraph','data', js))
+        target = os.path.sep.join(('LemonGraph', 'data', js))
         source = os.path.sep.join(('deps', 'js', js))
         dotsource = os.path.sep.join(('deps', 'js', '.%s' % js))
         try:
-            os.mkdir(os.path.sep.join(('deps','js')))
+            os.mkdir(os.path.sep.join(('deps', 'js')))
         except OSError:
             pass
 
@@ -71,20 +72,22 @@ def fetch_js():
         try:
             s2 = os.stat(target)
         except OSError:
-            print >>sys.stderr, "Hard linking: %s -> %s" % (source, target)
+            print >> sys.stderr, "Hard linking: %s -> %s" % (source, target)
             os.link(source, target)
             continue
 
         for i in (stat.ST_INO, stat.ST_DEV):
             if s1[i] != s2[i]:
                 os.unlink(target)
-                print >>sys.stderr, "Hard linking: %s -> %s" % (source, target)
+                print >> sys.stderr, "Hard linking: %s -> %s" % (source, target)
                 os.link(source, target)
                 break
+
 
 def fetch_external():
     git_submodule_init()
     fetch_js()
+
 
 reqs = ['cffi>=1.0', 'lazy', 'msgpack-python', 'pysigset', 'python-dateutil']
 if platform.python_implementation() == 'CPython':
@@ -98,7 +101,7 @@ if __name__ == "__main__":
         maintainer_email='/dev/null',
         url='https://github.com/NationalSecurityAgency/lemongraph',
         version='0.9.0',
-        description = 'LemonGraph Database',
+        description='LemonGraph Database',
         packages=['LemonGraph'],
         package_data={b'LemonGraph': ['data/*']},
         install_requires=reqs,
