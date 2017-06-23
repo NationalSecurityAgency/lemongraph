@@ -1199,19 +1199,6 @@ graph_iter_t graph_node_edges(graph_txn_t txn, node_t node, logID_t beforeID){
 		graph_node_edges_out(txn, node, beforeID));
 }
 
-/*
-graph_iter_t graph_node_edges_dir(graph_txn_t txn, node_t node, unsigned int direction, logID_t beforeID){
-	assert(direction <= GRAPH_DIR_BOTH);
-	switch(direction){
-		case GRAPH_DIR_IN:
-			return graph_node_edges_in(txn, node, beforeID);
-		case GRAPH_DIR_OUT:
-			return graph_node_edges_out(txn, node, beforeID);
-		default:
-			return graph_node_edges(txn, node, beforeID);
-	}
-}*/
-
 graph_iter_t graph_node_edges_dir(graph_txn_t txn, node_t node, unsigned int direction, logID_t beforeID){
 	graph_iter_t it;
 	switch(direction){
@@ -1397,5 +1384,3 @@ char *graph_string(graph_txn_t txn, strID_t id, size_t *len){
 	}
 	return s;
 }
-
-// end public api
