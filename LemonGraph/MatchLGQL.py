@@ -198,7 +198,9 @@ class QuerySyntaxError(Exception):
         return 'Query syntax error - %s at index %d: %s' % (self.message, self.pos, self.query)
 
     def __repr__(self):
-        return 'QuerySyntaxError(%s, %s, %s)' % map(repr, (self.query, self.pos, self.message))
+        return 'QuerySyntaxError(%s, %s, %s)' % tuple(
+            repr(arg) for arg in (self.query, self.pos, self.message))
+
 
 class MatchLGQL(object):
     def __init__(self, filter, cache=None):
