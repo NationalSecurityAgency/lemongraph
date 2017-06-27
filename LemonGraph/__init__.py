@@ -658,7 +658,7 @@ class NodeEdgeProperty(GraphItem):
         if native is None:
             native = self.discoverable
         props = Iterator(self.txn, self._lib_props_iter, lib.iter_next_prop, arg=self._data, handler=handler, beforeID=self.beforeID)
-        return itertools.chain(self._prop_iter(native, handler=handler), props);
+        return itertools.chain(self._prop_iter(native, handler=handler), props)
 
     def delete(self):
         self._lib_delete(self._txn, self._data)
