@@ -23,7 +23,7 @@ class KV(object):
 
     def __getitem__(self, key):
         key = self.serialize_key.encode(key)
-        data = lib.kv_get(self._kv, key, len(key), self._dlen);
+        data = lib.kv_get(self._kv, key, len(key), self._dlen)
         if data == ffi.NULL:
             raise KeyError(key)
         return self.serialize_value.decode(ffi.buffer(data, self._dlen[0]))
@@ -41,7 +41,7 @@ class KV(object):
 
     def __contains__(self, key):
         key = self.serialize_key.encode(key)
-        data = lib.kv_get(self._kv, key, len(key), self._dlen);
+        data = lib.kv_get(self._kv, key, len(key), self._dlen)
         return False if data == ffi.NULL else True
 
     def get(self, key, default=None):

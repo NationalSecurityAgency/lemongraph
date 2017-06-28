@@ -161,7 +161,7 @@ class Context(object):
 
     def graph(self, *args, **kwargs):
         kwargs['ctx'] = self
-        return self._graph(*args, **kwargs);
+        return self._graph(*args, **kwargs)
 
     def _status_enrich(self, status, uuid):
         output = { 'graph': uuid, 'id': uuid }

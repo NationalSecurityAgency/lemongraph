@@ -49,7 +49,7 @@ class SSet(object):
 
     def __contains__(self, value):
         value = self.serialize_value.encode(value)
-        data = lib.kv_get(self._kv, value, len(value), self._dlen);
+        data = lib.kv_get(self._kv, value, len(value), self._dlen)
         return False if data == ffi.NULL else True
 
     def __iter__(self):
