@@ -45,7 +45,7 @@ CastsByRecType = {
 
 
 def merge_values(a, b):
-    '''merges nested dictionaries, in case of type mismatch or non-dictionary, overwrites fields in a from b'''
+    """merges nested dictionaries, in case of type mismatch or non-dictionary, overwrites fields in a from b"""
     if isinstance(b, dict):
         if isinstance(a, dict):
             for k, v in b.iteritems():
@@ -124,7 +124,7 @@ class Graph(object):
         return bool(lib.graph_updated(self._graph))
 
     def close(self):
-        '''close graph handle'''
+        """close graph handle"""
         if self._graph not in (None, ffi.NULL):
             lib.graph_close(self._graph)
         self._graph = None
@@ -134,15 +134,15 @@ class Graph(object):
         return Serializer()
 
     def transaction(self, write=True, beforeID=None):
-        '''returns transaction handle, to be used in a 'with' block'''
+        """returns transaction handle, to be used in a 'with' block"""
         return Transaction(self, write=write, beforeID=beforeID)
 
     def snapshot(self, bs=1048576, compact=True):
-        '''returns iterator that will produce blocks of binary snapshot data'''
+        """returns iterator that will produce blocks of binary snapshot data"""
         return SnapshotIterator(self, bs=bs, compact=compact)
 
     def delete(self):
-        '''close graph handle if it wasn't already, and delete backing files from filesystem'''
+        """close graph handle if it wasn't already, and delete backing files from filesystem"""
         if self._graph is not None:
             self.close()
         path = self.path
@@ -370,11 +370,11 @@ class Transaction(GraphItem):
             self.graph = self._txn = self._parent = None
 
     def abort(self):
-        '''immediately aborts a transaction and short circuits out of its 'with' block'''
+        """immediately aborts a transaction and short circuits out of its 'with' block"""
         raise AbortTransaction(self)
 
     def commit(self):
-        '''immediately commits a transaction and short circuits out of its 'with' block'''
+        """immediately commits a transaction and short circuits out of its 'with' block"""
         raise CommitTransaction(self)
 
     # we do this because we really don't want any object ref cycles - that could cause problems with our __del__ methods
@@ -490,19 +490,19 @@ class Transaction(GraphItem):
             start += 1
 
     def pretty(self, **kwargs):
-        '''pretty printer'''
+        """pretty printer"""
         out = kwargs.pop('out', sys.stdout)
         for obj in self.scan(**kwargs):
             print >>out, obj.pretty()
 
     def dump(self, **kwargs):
-        '''not-so-pretty printer'''
+        """not-so-pretty printer"""
         out = kwargs.pop('out', sys.stdout)
         for obj in self.scan(**kwargs):
             print >>out, obj.dump()
 
     def kv(self, domain, map_data=False, map_keys=False, serialize_key=None, serialize_value=None):
-        '''domain-specific key/value storage'''
+        """domain-specific key/value storage"""
         kwargs = {}
         if serialize_key:
             kwargs['serialize_key'] = serialize_key
@@ -511,21 +511,21 @@ class Transaction(GraphItem):
         return KV(self, domain, map_data=map_data, map_keys=map_keys, **kwargs)
 
     def sset(self, domain, map_values=False, serialize_value=None):
-        '''domain-specific sorted set'''
+        """domain-specific sorted set"""
         kwargs = {}
         if serialize_value:
             kwargs['serialize_value'] = serialize_value
         return SSet(self, domain, map_values=map_values, **kwargs)
 
     def fifo(self, domain, map_values=False, serialize_value=None):
-        '''domain-specific fifo'''
+        """domain-specific fifo"""
         kwargs = {}
         if serialize_value:
             kwargs['serialize_value'] = serialize_value
         return Fifo(self, domain, map_values=map_values, **kwargs)
 
     def updates(self, **kwargs):
-        '''returns iterator for tuples of: node/edge before modification, node/edge after modification, the set of key names that changed, first and last txn ID to contribute to the delta, and the last logID processed'''
+        """returns iterator for tuples of: node/edge before modification, node/edge after modification, the set of key names that changed, first and last txn ID to contribute to the delta, and the last logID processed"""
         changed = {}
         batch=kwargs.pop('batch', 500)
         for target in self.scan(**kwargs):
