@@ -511,49 +511,40 @@ static void _node_index(graph_txn_t txn, node_t e){
 	MDB_val key = { 0, kbuf };
 	MDB_val data = { 0, NULL };
 
-	cursor_t idx = txn_cursor_new((txn_t)txn, DB_NODE_IDX);
 	encode(e->type, kbuf, key.mv_size);
 	encode(e->val,  kbuf, key.mv_size);
 	encode(e->id,   kbuf, key.mv_size);
-	int r = cursor_put(idx, &key, &data, 0);
+	int r = db_put((txn_t)txn, DB_NODE_IDX, &key, &data, 0);
 	assert(MDB_SUCCESS == r);
-	cursor_close(idx);
 }
 
 static void _edge_index(graph_txn_t txn, edge_t e){
 	uint8_t kbuf[esizeof(e->type) + esizeof(e->val) + esizeof(e->src) + esizeof(e->tgt) + esizeof(e->id)];
 	MDB_val key = { 0, kbuf };
 	MDB_val data = { 0, NULL };
-	cursor_t idx;
 	int r;
 
-	idx = txn_cursor_new((txn_t)txn, DB_EDGE_IDX);
 	encode(e->type, kbuf, key.mv_size);
 	encode(e->val,  kbuf, key.mv_size);
 	encode(e->src,  kbuf, key.mv_size);
 	encode(e->tgt,  kbuf, key.mv_size);
 	encode(e->id,   kbuf, key.mv_size);
-	r = cursor_put(idx, &key, &data, 0);
+	r = db_put((txn_t)txn, DB_EDGE_IDX, &key, &data, 0);
 	assert(MDB_SUCCESS == r);
-	cursor_close(idx);
 
-	idx = txn_cursor_new((txn_t)txn, DB_SRCNODE_IDX);
 	key.mv_size = 0;
 	encode(e->src, kbuf, key.mv_size);
 	encode(e->type, kbuf, key.mv_size);
 	encode(e->id,  kbuf, key.mv_size);
-	r = cursor_put(idx, &key, &data, 0);
+	r = db_put((txn_t)txn, DB_SRCNODE_IDX, &key, &data, 0);
 	assert(MDB_SUCCESS == r);
-	cursor_close(idx);
 
-	idx = txn_cursor_new((txn_t)txn, DB_TGTNODE_IDX);
 	key.mv_size = 0;
 	encode(e->tgt, kbuf, key.mv_size);
 	encode(e->type, kbuf, key.mv_size);
 	encode(e->id,  kbuf, key.mv_size);
-	r = cursor_put(idx, &key, &data, 0);
+	r = db_put((txn_t)txn, DB_TGTNODE_IDX, &key, &data, 0);
 	assert(MDB_SUCCESS == r);
-	cursor_close(idx);
 }
 
 static void _prop_index(graph_txn_t txn, prop_t e){
@@ -561,13 +552,11 @@ static void _prop_index(graph_txn_t txn, prop_t e){
 	MDB_val key = { 0, kbuf };
 	MDB_val data = { 0, NULL };
 
-	cursor_t idx = txn_cursor_new((txn_t)txn, DB_PROP_IDX);
 	encode(e->pid, kbuf, key.mv_size);
 	encode(e->key, kbuf, key.mv_size);
 	encode(e->id,  kbuf, key.mv_size);
-	int r = cursor_put(idx, &key, &data, 0);
+	int r = db_put((txn_t)txn, DB_PROP_IDX, &key, &data, 0);
 	assert(MDB_SUCCESS == r);
-	cursor_close(idx);
 }
 
 static logID_t __prop_resolve(graph_txn_t txn, prop_t e, logID_t beforeID, int readonly){
