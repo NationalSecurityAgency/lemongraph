@@ -28,6 +28,8 @@
 
 #include"db-private.h"
 
+typedef uint64_t txnID_t;
+
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 
 // max log entry size is for edge_t
@@ -53,10 +55,10 @@
 
 // corresponding decode
 #define decode(x, buffer, iter) do{ \
-	uint8_t count = ((uint8_t *)(buffer))[iter++]; \
-	assert(sizeof(x) >= count); \
+	uint8_t _count = ((uint8_t *)(buffer))[iter++]; \
+	assert(sizeof(x) >= _count); \
 	x = 0; \
-	while(count--) \
+	while(_count--) \
 		x = (x<<8) + ((uint8_t *)(buffer))[iter++]; \
 }while(0)
 
@@ -95,6 +97,46 @@ char *graph_strerror(int err){
 	return db_strerror(err);
 }
 
+// here's the deal - the actual key in the db is comprised of 3 serialized uints:
+//	txnID: incrementing sequence of transaction numbers, starting at 1
+//	       each write txn that caused the log to grow will get it's own txnID
+//	start: first logID in the txn, will be >= 1
+//	count: number of logIDs accumulated in the txn, will be >= 1
+//
+// when this function is called, at least one of the params will be an actual key as above
+// if the txnID for the other decodes to zero, then it is a query operation. Decoding the second uint determines
+//	whether the 3rd uint should be tested against (0) the txnID or (non-zero) the start/count range
+//
+// with one btree, this lets us quickly:
+//	map txnID to logID range
+//	map logID to containing txnID
+static int magic_txnlog_cmp(const MDB_val *a, const MDB_val *b){
+	int ia = 0, ib = 0;
+	txnID_t ta, tb;
+	decode(ta, a->mv_data, ia);
+	decode(tb, b->mv_data, ib);
+	if(!ta){
+		assert(tb);
+		// a is query, b is actual key in db
+		decode(ta, a->mv_data, ia);
+		if(ta){
+			decode(ta, a->mv_data, ia);
+			uint64_t start, count;
+			decode(start, b->mv_data, ib);
+			if(ta < start)
+				return -1;
+			decode(count, b->mv_data, ib);
+			return ta >= (start + count);
+		}
+		// txnID query
+		decode(ta, a->mv_data, ia);
+	}else if(!tb){
+		// I don't believe this happens today, but just in case ...
+		return - magic_txnlog_cmp(b, a);
+	}
+	return ta < tb ? -1 : ta > tb ? 1 : 0;
+}
+
 #define DBS (sizeof(DB_INFO)/sizeof(*DB_INFO))
 
 #define DB_SCALAR      0
@@ -106,34 +148,38 @@ char *graph_strerror(int err){
 #define DB_SRCNODE_IDX 6
 #define DB_TGTNODE_IDX 7
 #define DB_KV          8
+#define DB_TXNLOG      9
 
 static dbi_t DB_INFO[] = {
 	// strID_t strID => bytes (append-only)
-	[DB_SCALAR] = { "scalar", MDB_INTEGERKEY },
+	[DB_SCALAR] = { "scalar", MDB_INTEGERKEY, NULL },
 
 	// uint32_t crc => strID_t strIDs[]
-	[DB_SCALAR_IDX] = { "scalar_idx", MDB_DUPSORT|MDB_INTEGERKEY|MDB_DUPFIXED|MDB_INTEGERDUP },
+	[DB_SCALAR_IDX] = { "scalar_idx", MDB_DUPSORT|MDB_INTEGERKEY|MDB_DUPFIXED|MDB_INTEGERDUP, NULL },
 
 	// varint_t logID => entry_t (appends & updates)
-	[DB_LOG] = { "log", 0 },
+	[DB_LOG] = { "log", 0, NULL },
 
 	// varint_t [type, val, logID] => ''
-	[DB_NODE_IDX] = { "node_idx", 0 },
+	[DB_NODE_IDX] = { "node_idx", 0, NULL },
 
 	// varint_t [type, val, src, tgt, logID]
-	[DB_EDGE_IDX] = { "edge_idx", 0 },
+	[DB_EDGE_IDX] = { "edge_idx", 0, NULL },
 
 	// varint_t pid, key, logID => ''
-	[DB_PROP_IDX] = { "prop_idx", 0 },
+	[DB_PROP_IDX] = { "prop_idx", 0, NULL },
 
 	// varint_t node, type, edge => ''
-	[DB_SRCNODE_IDX] = { "srcnode_idx", 0 },
+	[DB_SRCNODE_IDX] = { "srcnode_idx", 0, NULL },
 
 	// varint_t node, type, edge => ''
-	[DB_TGTNODE_IDX] = { "tgtnode_idx", 0 },
+	[DB_TGTNODE_IDX] = { "tgtnode_idx", 0, NULL },
 
 	// varint_t domain, key => varint_t val
-	[DB_KV] = { "kv", 0 },
+	[DB_KV] = { "kv", 0, NULL },
+
+	// varint_t [txnID, start, count] => varint_t [node_count, edge_count] (append only)
+	[DB_TXNLOG] = { "txnlog", 0, magic_txnlog_cmp }
 };
 
 struct graph_t{
@@ -143,11 +189,34 @@ struct graph_t{
 #define TXN_DB(txn) ((txn_t)(txn))->db
 #define TXN_RW(txn) ((txn)->txn.rw)
 #define TXN_RO(txn) ((txn)->txn.ro)
+#define TXN_PARENT(txn) ((graph_txn_t)(((txn_t)(txn))->parent))
 
 struct graph_txn_t{
+	// everything after 'txn' is copied to a parent txn on commit success
 	struct txn_t txn;
+
 	strID_t next_strID;
 	logID_t next_logID;
+	logID_t begin_nextID;
+	int64_t node_delta;
+	int64_t edge_delta;
+
+	// everything from prev_id down may be copied to a parent txn on commit fail/abort
+	// (iff the parent didn't already have it)
+	txnID_t prev_id;
+	logID_t prev_start;
+	logID_t prev_count;
+	uint64_t prev_nodes;
+	uint64_t prev_edges;
+};
+
+typedef struct txn_info_t * txn_info_t;
+struct txn_info_t{
+	txnID_t id;
+	logID_t start;
+	logID_t count;
+	uint64_t nodes;
+	uint64_t edges;
 };
 
 static strID_t graph_string_nextID(graph_txn_t txn, int consume){
@@ -394,7 +463,7 @@ static void _delete(graph_txn_t txn, const logID_t newrecID, const logID_t oldre
 	assert(MDB_SUCCESS == r);
 
 	// copy rectype (mv_size already set to 1)
-	memcpy(mem, olddata.mv_data, 1);
+	const uint8_t rectype = *mem = *(uint8_t *)olddata.mv_data;
 
 	// fill in new nextID
 	encode(newrecID, mem, newdata.mv_size);
@@ -410,12 +479,15 @@ static void _delete(graph_txn_t txn, const logID_t newrecID, const logID_t oldre
 	assert(MDB_SUCCESS == r);
 
 	// recursively delete item properties, and edges if item is a node
-	if(GRAPH_NODE == *(uint8_t *)olddata.mv_data){
+	if(GRAPH_NODE == rectype){
 		iter = graph_iter_concat(3,
 			_graph_entry_idx(txn, DB_PROP_IDX, oldrecID, 0),
 			_graph_entry_idx(txn, DB_SRCNODE_IDX, oldrecID, 0),
 			_graph_entry_idx(txn, DB_TGTNODE_IDX, oldrecID, 0));
+		txn->node_delta--;
 	}else{
+		if(GRAPH_EDGE == rectype)
+			txn->edge_delta--;
 		iter = _graph_entry_idx(txn, DB_PROP_IDX, oldrecID, 0);
 	}
 	while((child = graph_iter_next(iter))){
@@ -583,6 +655,7 @@ static logID_t __node_resolve(graph_txn_t txn, node_t e, logID_t beforeID, int r
 	assert(0 == beforeID);
 	e->next = 0;
 	e->is_new = 1;
+	txn->node_delta++;
 	_node_append(txn, e, e->id);
 	_node_index(txn, e);
 	return e->id;
@@ -595,6 +668,7 @@ static logID_t __edge_resolve(graph_txn_t txn, edge_t e, logID_t beforeID, int r
 	assert(0 == beforeID);
 	e->next = 0;
 	e->is_new = 1;
+	txn->edge_delta++;
 	_edge_append(txn, e, e->id);
 	_edge_index(txn, e);
 	return e->id;
@@ -1267,38 +1341,140 @@ graph_iter_t graph_prop_props(graph_txn_t txn, prop_t prop, logID_t beforeID){
 }
 
 graph_t graph_open(const char * const path, const int flags, const int mode, int mdb_flags){
+	// explicitly disable MDB_WRITEMAP - graph_txn_reset current depends on nested write txns
+	mdb_flags &= ~MDB_WRITEMAP;
 	// fixme? padsize hardcoded to 1gb
 	return (graph_t) db_init(sizeof(struct graph_t), path, flags, mode, mdb_flags, DBS, DB_INFO, 1<<30);
 }
 
 graph_txn_t graph_txn_begin(graph_t g, graph_txn_t parent, unsigned int flags){
 	graph_txn_t txn = (graph_txn_t) db_txn_init(sizeof(*txn), (db_t)g, (txn_t)parent, flags);
-	if(txn)
-		txn->next_strID = txn->next_logID = 0;
+	if(txn){
+		if(parent){
+			// for child write txns, take snapshot of parent data
+			memcpy(sizeof(txn->txn) + (unsigned char *)txn,
+			       sizeof(txn->txn) + (unsigned char *)parent, sizeof(*txn) - sizeof(txn->txn));
+		}else{
+			// for parent write txns, we need to harvest the nextID
+			txn->next_strID = txn->next_logID = txn->node_delta = txn->edge_delta = 0;
+			txn->begin_nextID = TXN_RW(txn) ? _graph_log_nextID(txn, 0) : 0;
+
+			// other prev_* fields are only valid if prev_start is non-zero
+			txn->prev_start = 0;
+		}
+	}
 	return txn;
 }
 
-int graph_txn_reset(graph_txn_t txn){
-	int i, r;
-	for(i=0; i < DBS; i++){
-		r = db_drop((txn_t) txn, i, 0);
-		if(r != MDB_SUCCESS)
-			break;
+static int _fetch_info(graph_txn_t txn){
+	if(!txn->prev_start){
+		cursor_t c = txn_cursor_new((txn_t)txn, DB_TXNLOG);
+		int r = cursor_get(c, NULL, NULL, MDB_LAST);
+		if(MDB_SUCCESS == r){
+			MDB_val data, key;
+			r = cursor_get(c, &key, &data, MDB_GET_CURRENT);
+			assert(MDB_SUCCESS == r);
+			int i = 0;
+			decode(txn->prev_id, key.mv_data, i);
+			decode(txn->prev_start, key.mv_data, i);
+			decode(txn->prev_count, key.mv_data, i);
+			assert(i == key.mv_size);
+
+			i = 0;
+			decode(txn->prev_nodes, data.mv_data, i);
+			decode(txn->prev_edges, data.mv_data, i);
+			assert(i == data.mv_size);
+		}else if(MDB_NOTFOUND == r){
+			txn->prev_start = 1; // fudged to make the return statement easy
+			txn->prev_id = txn->prev_count = 0;
+			txn->prev_nodes = txn->prev_edges = 0;
+		}else{
+			assert(MDB_SUCCESS == r);
+		}
+		cursor_close(c);
 	}
-	txn->next_strID = txn->next_logID = 0;
+	return txn->prev_start + txn->prev_count == txn->begin_nextID;
+}
+
+int graph_txn_commit(graph_txn_t txn){
+	int r;
+	graph_txn_t parent;
+	txnID_t txnID = 0;
+	if(!txn->txn.updated){
+		// nothing happened
+		graph_txn_abort(txn);
+		r = MDB_SUCCESS;
+	}else if((parent = TXN_PARENT(txn))){
+		// nested write txn
+		r = txn_end((txn_t)txn, TXN_NOFREE);
+		if(MDB_SUCCESS == r){
+			memcpy(sizeof(txn->txn) + (unsigned char *)parent,
+			       sizeof(txn->txn) + (unsigned char *)txn, sizeof(*txn) - sizeof(txn->txn));
+		}else if(txn->prev_start != parent->prev_start){
+			memcpy(&parent->prev_id, &txn->prev_id, sizeof(*txn) - (intptr_t)&((graph_txn_t)NULL)->prev_id);
+		}
+		free(txn);
+	}else if(_fetch_info(txn) && txn->next_logID > txn->begin_nextID){
+		// write txn w/ valid txnlog table
+		logID_t nextID = txn->begin_nextID;
+		logID_t count = txn->next_logID - nextID;
+		uint64_t nodes = txn->prev_nodes + txn->node_delta;
+		uint64_t edges = txn->prev_edges + txn->edge_delta;
+		uint8_t kbuf[esizeof(txnID) + esizeof(nextID) + esizeof(count)];
+		uint8_t dbuf[esizeof(nodes) + esizeof(edges)];
+		MDB_val key = { 0, kbuf }, data = { 0, dbuf };
+
+		txnID = txn->prev_id + 1;
+
+		encode(txnID,  kbuf, key.mv_size);
+		encode(nextID, kbuf, key.mv_size);
+		encode(count,  kbuf, key.mv_size);
+		encode(nodes,  dbuf, data.mv_size);
+		encode(edges,  dbuf, data.mv_size);
+
+		r = db_put((txn_t)txn, DB_TXNLOG, &key, &data, MDB_APPEND);
+		if(MDB_SUCCESS == r){
+			r = txn_commit((txn_t)txn);
+		}else{
+			txn_abort((txn_t)txn);
+		}
+	}else{
+		// write txn w/ invalid txnlog table
+		r = txn_commit((txn_t)txn);
+	}
+
+	return r;
+}
+
+void graph_txn_abort(graph_txn_t txn){
+	graph_txn_t parent = TXN_PARENT(txn);
+	if(parent)
+		memcpy(&parent->prev_id, &txn->prev_id, sizeof(*txn) - (intptr_t)&((graph_txn_t)NULL)->prev_id);
+	txn_abort((txn_t)txn);
+}
+
+int graph_txn_reset(graph_txn_t txn){
+	int i, r = 1;
+	graph_txn_t sub_txn = graph_txn_begin((graph_t)(((txn_t)txn)->db), txn, 0);
+	if(sub_txn){
+		// truncate all tables
+		for(i = 0, r = MDB_SUCCESS; i < DBS && MDB_SUCCESS == r; i++)
+			r = db_drop((txn_t) sub_txn, i, 0);
+		if(MDB_SUCCESS == r){
+			r = graph_txn_commit(sub_txn);
+			if(MDB_SUCCESS == r){
+				txn->begin_nextID = 1;
+				txn->next_strID = txn->next_logID = txn->node_delta = txn->edge_delta = txn->prev_start = 0;
+			}
+		}else{
+			graph_txn_abort(sub_txn);
+		}
+	}
 	return r;
 }
 
 int graph_txn_updated(graph_txn_t txn){
 	return txn_updated((txn_t)txn);
-}
-
-int graph_txn_commit(graph_txn_t txn){
-	return txn_commit((txn_t)txn);
-}
-
-void graph_txn_abort(graph_txn_t txn){
-	txn_abort((txn_t)txn);
 }
 
 void graph_sync(graph_t g, int force){
@@ -1322,19 +1498,169 @@ void graph_close(graph_t g){
 		db_close((db_t)g);
 }
 
+static int _find_txn(graph_txn_t txn, txn_info_t info, logID_t beforeID){
+	assert(beforeID && beforeID <= txn->next_logID);
+	const logID_t stopID = beforeID - 1;
+	int ret = 0;
+
+	uint8_t kbuf[esizeof(txnID_t) + esizeof(logID_t) + esizeof(logID_t)];
+	MDB_val data, key = { 0, kbuf };
+
+	// encode magic to query by logID
+	encode(0, kbuf, key.mv_size);
+	encode(1, kbuf, key.mv_size);
+	encode(stopID, kbuf, key.mv_size);
+
+	cursor_t c = txn_cursor_new((txn_t)txn, DB_TXNLOG);
+	int i, r = cursor_get(c, &key, &data, MDB_SET_KEY);
+
+	if(MDB_SUCCESS == r){
+again:
+		i = 0;
+		decode(info->id, key.mv_data, i);
+		decode(info->start, key.mv_data, i);
+		decode(info->count, key.mv_data, i);
+		assert(key.mv_size == i);
+
+		if(info->start + info->count <= beforeID){
+			i = 0;
+			decode(info->nodes, data.mv_data, i);
+			decode(info->edges, data.mv_data, i);
+			assert(data.mv_size == i);
+			info->start = info->start + info->count;
+		}else if(info->id > 1){
+			r = cursor_get(c, &key, &data, MDB_PREV);
+			assert(MDB_SUCCESS == r);
+			goto again;
+		}else{
+			info->start = 1;
+			info->count = 0;
+			info->nodes = 0;
+			info->edges = 0;
+		}
+		ret = 1;
+	}else if(_fetch_info(txn)){
+//		info->id = txn->prev_id;
+		info->start = txn->prev_start + txn->prev_count;
+//		info->count = txn->next_logID - info->start;
+		info->nodes = txn->prev_nodes;
+		info->edges = txn->prev_edges;
+		ret = 1;
+	}
+
+	cursor_close(c);
+
+	return ret;
+}
+
+static void _nodes_edges_delta(graph_txn_t txn, txn_info_t info, logID_t beforeID){
+	uint64_t nodes = info->nodes, edges = info->edges;
+	logID_t id = info->start;
+
+	if(id == beforeID)
+		return;
+
+	cursor_t c = txn_cursor_new((txn_t)txn, DB_LOG);
+	uint8_t kbuf[esizeof(id)];
+	MDB_val data, key = { 0, &kbuf };
+	encode(id, kbuf, key.mv_size);
+
+	int r = cursor_get(c, &key, &data, MDB_SET_KEY);
+	assert(MDB_SUCCESS == r);
+	while(1){
+		uint8_t rectype = *(uint8_t *)data.mv_data;
+		int i = 0;
+
+		decode(id, key.mv_data, i);
+
+		if(GRAPH_NODE == rectype){
+			nodes++;
+		}else if(GRAPH_EDGE == rectype){
+			edges++;
+		}else if(GRAPH_DELETION == rectype){
+			MDB_val d2, k2 = { enclen((uint8_t *)data.mv_data, 1), 1 + (uint8_t *)data.mv_data };
+			r = db_get((txn_t)txn, DB_LOG, &k2, &d2);
+			assert(MDB_SUCCESS == r);
+			rectype = *(uint8_t *)d2.mv_data;
+			if(GRAPH_NODE == rectype){
+				graph_iter_t it = graph_edges(txn, id);
+				entry_t e;
+				while((e = graph_iter_next(it))){
+					free(e);
+					edges--;
+				}
+				nodes--;
+			}else if(GRAPH_EDGE == rectype){
+				edges--;
+			}
+		}
+
+		if(++id == beforeID)
+			break;
+
+		r = cursor_get(c, &key, &data, MDB_NEXT);
+		assert(MDB_SUCCESS == r);
+	}
+	cursor_close(c);
+	info->nodes = nodes;
+	info->edges = edges;
+}
+
 size_t graph_nodes_count(graph_txn_t txn, logID_t beforeID){
 	size_t count = 0;
+
+	const logID_t nextID = _graph_log_nextID(txn, 0);
+	if(!beforeID || beforeID > nextID)
+		beforeID = nextID;
+
+	if(1 == beforeID)
+		goto done;
+
+	struct txn_info_t info;
+	if(_find_txn(txn, &info, beforeID)){
+		_nodes_edges_delta(txn, &info, beforeID);
+		count = info.nodes;
+		goto done;
+	}
+
+	// fall back to scanning the nodes index
 	graph_iter_t iter = graph_nodes(txn, beforeID);
-	while(graph_iter_next(iter))
+	entry_t e;
+	while((e = graph_iter_next(iter))){
+		free(e);
 		count++;
+	}
+
+done:
 	return count;
 }
 
 size_t graph_edges_count(graph_txn_t txn, logID_t beforeID){
 	size_t count = 0;
+
+	const logID_t nextID = _graph_log_nextID(txn, 0);
+	if(!beforeID || beforeID > nextID)
+		beforeID = nextID;
+
+	if(1 == beforeID)
+		goto done;
+
+	struct txn_info_t info;
+	if(_find_txn(txn, &info, beforeID)){
+		_nodes_edges_delta(txn, &info, beforeID);
+		count = info.edges;
+		goto done;
+	}
+
+	// fall back to scanning the edges index for old graphs
 	graph_iter_t iter = graph_edges(txn, beforeID);
-	while(graph_iter_next(iter))
+	entry_t e;
+	while((e = graph_iter_next(iter))){
+		free(e);
 		count++;
+	}
+
+done:
 	return count;
 }
 

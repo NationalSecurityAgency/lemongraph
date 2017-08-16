@@ -266,6 +266,9 @@ Actual graph data is stored in a log - records are never deleted, but a numeric 
 
 * __log__ - maps incrementing numeric logID to a graph update event: new node, edge, or property, or a deletion. Types/keys/values are transformed into numeric IDs using the above hash table.
 
+Track stats for write transactions that grow the log:
+
+* __txnlog__ - maps incrementing txnID and log offset/range to total node/edge counts
 
 To provide speedy operations, graph data is indexed several ways (we reserve the right to add more) - records are never deleted or updated:
 
