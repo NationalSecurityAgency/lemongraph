@@ -163,24 +163,29 @@ void cursor_close(cursor_t cursor){
 	free(cursor);
 }
 
-static inline int _txn_end(txn_t txn, int abort){
+int txn_end(txn_t txn, int flags){
+	int r = MDB_SUCCESS;
 	while(txn->head)
 		_cursor_cancel(txn->head);
 
-	int r = MDB_SUCCESS;
-	if(abort){
+	if(flags & TXN_ABORT){
 		mdb_txn_abort(txn->txn);
 	}else{
 		r = mdb_txn_commit(txn->txn);
+		if(txn->updated && MDB_SUCCESS == r){
+			if(txn->parent)
+				txn->parent->updated = 1;
+			else
+				txn->db->updated = 1;
+		}
 	}
 
 	pthread_mutex_lock(&txn->db->mutex);
-	txn->db->updated |= txn->updated;
 	if(1 == txn->db->txns--)
 		pthread_cond_signal(&txn->db->cond);
 	pthread_mutex_unlock(&txn->db->mutex);
-	free(txn);
-	return r;
+
+	return (flags & TXN_NOFREE) ? r : free(txn), r;
 }
 
 int txn_updated(txn_t txn){
@@ -188,11 +193,11 @@ int txn_updated(txn_t txn){
 }
 
 void txn_abort(txn_t txn){
-	_txn_end(txn, 1);
+	txn_end(txn, TXN_ABORT);
 }
 
 int txn_commit(txn_t txn){
-	return _txn_end(txn, 0);
+	return txn_end(txn, 0);
 }
 
 txn_t db_txn_new(db_t db, txn_t parent, int flags){
@@ -205,6 +210,7 @@ txn_t db_txn_init(const size_t size, db_t db, txn_t parent, int flags){
 	assert(db);
 	txn_t txn = malloc(size < sizeof(*txn) ? sizeof(*txn) : size);
 	txn->db = db;
+	txn->parent = parent;
 	txn->head = NULL;
 	txn->ro = (flags & MDB_RDONLY) ? 1 : 0;
 	txn->rw = !txn->ro;
@@ -441,6 +447,10 @@ retry:
 				}else{
 					txn_abort(txn);
 				}
+				FAIL(r, err, r, fail);
+			}
+			if(dbis[i].cmp){
+				r = mdb_set_compare(txn->txn, db->handles[i], dbis[i].cmp);
 				FAIL(r, err, r, fail);
 			}
 		}

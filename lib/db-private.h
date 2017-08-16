@@ -15,6 +15,7 @@ struct db_t{
 struct txn_t {
 	cursor_t head; // must be first
 	db_t db;
+	txn_t parent;
 	MDB_txn *txn;
 	int ro : 1;
 	int rw : 1;

@@ -10,6 +10,9 @@
 
 #include"lmdb.h"
 
+#define TXN_ABORT  1
+#define TXN_NOFREE 2
+
 typedef struct db_t * db_t;
 typedef struct txn_t * txn_t;
 typedef struct cursor_t * cursor_t;
@@ -19,6 +22,7 @@ typedef struct db_snapshot_t * db_snapshot_t;
 typedef const struct {
 	const char *const name;
 	const unsigned int flags;
+	MDB_cmp_func *cmp;
 } dbi_t;
 
 char *db_strerror(int err);
@@ -57,6 +61,7 @@ txn_t db_txn_ro(db_t db);
 int txn_updated(txn_t txn);
 void txn_abort(txn_t txn);
 int txn_commit(txn_t txn);
+int txn_end(txn_t txn, int flags);
 
 cursor_t txn_cursor_new(txn_t txn, int dbi);
 cursor_t txn_cursor_init(const size_t size, txn_t txn, int dbi);
