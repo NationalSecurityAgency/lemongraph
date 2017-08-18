@@ -75,10 +75,10 @@ class TestGraph(unittest.TestCase):
             self.assertEqual(txn.nodes_count(), 0)
             self.assertEqual(txn.edges_count(), 0)
 
-            n1 = txn.node(type="foo", value="bar");
+            n1 = txn.node(type="foo", value="bar")
             self.assertEqual(txn.nodes_count(), 1)
 
-            n2 = txn.node(type="foo", value="baz");
+            n2 = txn.node(type="foo", value="baz")
             self.assertEqual(txn.nodes_count(), 2)
 
             self.assertEqual(txn.nodes_count(beforeID=n2.ID), 1)
@@ -87,6 +87,7 @@ class TestGraph(unittest.TestCase):
             self.assertEqual(txn.edges_count(), 1)
 
         with self.g.transaction(write=True) as txn:
+            self.assertEqual(txn.nodes_count(beforeID=n2.ID), 1)
             n3 = txn.node(type="foo", value="blah")
             self.assertEqual(txn.nodes_count(), 3)
             n1.delete()
@@ -94,9 +95,9 @@ class TestGraph(unittest.TestCase):
             self.assertEqual(txn.edges_count(), 0)
 
         with self.g.transaction(write=False) as txn:
-            self.assertEqual(txn.nodes_count(), 2);
-            self.assertEqual(txn.edges_count(), 0);
-            self.assertEqual(txn.nodes_count(beforeID=txn.lastID), 3);
+            self.assertEqual(txn.nodes_count(), 2)
+            self.assertEqual(txn.edges_count(), 0)
+            self.assertEqual(txn.nodes_count(beforeID=txn.lastID), 3)
 
     def test_edges_by_type(self):
         with self.g.transaction(write=True) as txn:
