@@ -431,7 +431,8 @@ class Graph_Root(_Input, _Streamy):
     def __query_graphs(self, uuids, queries, qtoc):
         for uuid in uuids:
             try:
-                with self.graph(uuid, readonly=True, create=False, hook=False) as g:
+#                with self.graph(uuid, readonly=True, create=False, hook=False) as g:
+                with self.graph(uuid, create=False, hook=False) as g:
                     with g.transaction(write=False) as txn:
                         try:
                             gen = txn.mquery(queries)
@@ -455,7 +456,8 @@ class Graph_UUID(_Input, _Streamy):
     def delete(self, _, uuid):
         with self.lock.exclusive(uuid) as locked:
             # opening the graph checks user/role perms
-            with self.graph(uuid, readonly=True, create=False, locked=locked) as g:
+#            with self.graph(uuid, readonly=True, create=False, locked=locked) as g:
+            with self.graph(uuid, create=False, locked=locked) as g:
                 self.collection.drop(uuid)
 
     def put(self, _, uuid):
@@ -481,7 +483,8 @@ class Graph_UUID(_Input, _Streamy):
                         break
                     fh.write(data)
                 cleanup.popleft()() # fh.close()
-                with self.collection.graph(dbname, readonly=True, hook=False, create=False) as g:
+#                with self.collection.graph(dbname, readonly=True, hook=False, create=False) as g:
+                with self.collection.graph(dbname, hook=False, create=False) as g:
                     pass
                 os.rename(path, target)
                 cleanup.pop() # remove os.unlink(path)
@@ -639,7 +642,8 @@ class Reset_UUID(_Input, Handler):
             os.close(fd)
             cleanup = [lambda: os.unlink(path)]
             try:
-                with self.graph(uuid, readonly=True, locked=locked) as g1, self.collection.graph(dbname, create=True, hook=False) as g2:
+#                with self.graph(uuid, readonly=True, locked=locked) as g1, self.collection.graph(dbname, create=True, hook=False) as g2:
+                with self.graph(uuid, locked=locked) as g1, self.collection.graph(dbname, create=True, hook=False) as g2:
                     with g1.transaction(write=False) as t1, g2.transaction(write=True) as t2:
                         # fixme
                         cleanup.append(lambda: os.unlink('%s-lock' % path))
@@ -664,7 +668,8 @@ class Reset_UUID(_Input, Handler):
                 cleanup.pop() # unlink(path)
                 # bypass creds check, allow hooks to run
                 self.collection.remove(uuid)
-                with self.collection.graph(uuid, readonly=True):
+#                with self.collection.graph(uuid, readonly=True):
+                with self.collection.graph(uuid):
                     pass
             except (IOError, OSError) as e:
                 if e.errno is errno.EPERM:
@@ -776,7 +781,8 @@ class Graph_Exec(_Input, _Streamy):
     def _txns_uuids(self, uuids):
         for uuid in uuids:
             try:
-                with self.graph(uuid, readonly=True, create=False, hook=False) as g:
+#                with self.graph(uuid, readonly=True, create=False, hook=False) as g:
+                with self.graph(uuid, create=False, hook=False) as g:
                     with g.transaction(write=False) as txn:
                         yield txn, uuid
             except:

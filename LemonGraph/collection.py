@@ -306,7 +306,8 @@ class Collection(object):
         with self.context(write=True) as ctx:
             for uuid in uuids:
                 try:
-                    with ctx.graph(uuid, readonly=True, create=False, hook=False) as g:
+#                    with ctx.graph(uuid, readonly=True, create=False, hook=False) as g:
+                    with ctx.graph(uuid, create=False, hook=False) as g:
                         with g.transaction(write=False) as txn:
                             ctx.sync(uuid, txn)
                 except IOError as e:
