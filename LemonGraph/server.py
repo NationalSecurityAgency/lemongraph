@@ -378,12 +378,26 @@ class _Input(Handler):
             props['seed'] = seed
         elif not create:
             props.pop('seed', None)
-        param['merge'] = True
-        param['properties'] = props
+
         try:
-            return txn.edge(**param)
-        except TypeError:
+            e = txn.edge(**param)
+        except:
             raise HTTPError(409, "Bad edge: %s" % edge)
+
+        # handle edge costs, allowed range: [0.0, 1.0]
+        # silently drop bad values:
+        #  cost defaults to 1 when edge is created
+        #  once cost is assigned, value may not be increased, as
+        #   depth recalculation could (would?) cover the entire graph
+        try:
+            cost = props['cost']
+            if cost < 0 or cost > 1 or cost >= e['cost']:
+                del props['cost']
+        except KeyError:
+            pass
+
+        e.update(props, merge=True)
+        return e
 
     @graphtxn(write=True, create=True, excl=True, on_failure=lambda g: g.delete())
     def _create(self, g, txn, _, uuid):
@@ -1012,36 +1026,46 @@ def seed_depth0():
         if entry.is_property and entry.key == 'seed' and entry.value and entry.is_node_property:
             entry.parent['depth'] = 0
 
-def add_depth():
-    inf = float('Inf')
-    while True:
-        # grab newly added edges, and cascade depth to adjacent node
-        txn, e = yield 'e()'
-        # grab latest versions of endpoints
-        src = txn.node(ID=e.srcID)
-        tgt = txn.node(ID=e.tgtID)
-        ds = src.get('depth', inf)
-        dt = tgt.get('depth', inf)
-        if ds + 1 < dt:
-            tgt['depth'] = ds + 1
-        elif dt + 1 < ds:
-            src['depth'] = dt + 1
+def process_edge(txn, e, cost=1, inf=float('Inf')):
+    # grab latest versions of endpoints
+    src = txn.node(ID=e.srcID)
+    tgt = txn.node(ID=e.tgtID)
+    ds = src.get('depth', inf)
+    dt = tgt.get('depth', inf)
+    if ds + cost < dt:
+        tgt['depth'] = ds + cost
+    elif dt + cost < ds:
+        src['depth'] = dt + cost
 
-def recurse_depth():
+def apply_cost(txn, prop):
+    # cost value validity has already been enforced above
+    process_edge(txn, prop.parent, cost=prop.value)
+
+def cascade_depth(txn, prop):
+    # grab latest version of parent node
+    node = txn.node(ID=prop.parentID)
+    mindepth = prop.value + 1
+    for n2 in node.neighbors:
+        try:
+            if n2['depth'] <= mindepth:
+                continue
+        except KeyError:
+            pass
+        n2['depth'] = mindepth
+
+def update_depth_cost():
     while True:
-        txn, prop = yield
-        if not prop.is_node_property or prop.key != 'depth':
-            continue
-        # grab latest version of parent node
-        node = txn.node(ID=prop.parentID)
-        mindepth = prop.value + 1
-        for n2 in node.neighbors:
-            try:
-                if n2['depth'] <= mindepth:
-                    continue
-            except KeyError:
-                pass
-            n2['depth'] = mindepth
+        txn, entry = yield
+        if entry.is_edge:
+            # grab newly added edges, and propagate depth
+            process_edge(txn, entry)
+        elif entry.is_property:
+            if entry.key == 'depth':
+                if entry.is_node_property:
+                    cascade_depth(txn, entry)
+            elif entry.key == 'cost':
+                if entry.is_edge_property:
+                    apply_cost(txn, entry)
 
 def usage(msg=None, fh=sys.stderr):
     print >>fh, 'Usage: python -mLemonGraph.server <options> [graphs-dir]'
@@ -1143,7 +1167,7 @@ def main():
 
     graph_opts=dict(
         serialize_property_value=Serializer.msgpack(),
-        adapters=Adapters(seed_depth0, add_depth, recurse_depth),
+        adapters=Adapters(seed_depth0, update_depth_cost),
         nosync=nosync, nometasync=nometasync,
         )
 
