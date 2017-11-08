@@ -13,7 +13,7 @@
 		(Content-Type: application/json, application/x-msgpack)
 		body should be object w/ the optional kv pairs below
 		{
-			"seed": true,  // mark any referenced nodes/edges as seeds
+			"seed": true,  // mark any referenced nodes/edges as seeds (nodes are assigned depth=0)
 			"meta": {},    // same structure as POST /graph, merges graph-level kv pairs
 			'chains': [],  // list of node[->edge->node]* object chains
 			'nodes': [],   // list of nodes
@@ -27,6 +27,11 @@
 			a) type[/value] (optional value defaults to empty string)
 			b) src and tgt attributes, with node objects as values (as above, must have type/value attributes)
 		Nodes and edges will be created as necessary if type/value or type/value/src/tgt combos do not already exist
+
+		Any supplied 'depth' property on a node is silently ignored (use seed flag to set node depth=0).
+		Any supplied 'cost' property on an edge is silently ignored if either is true:
+			a) cost < 0 or cost > 1
+			b) cost > target edge's current cost
 
 /graph/<uuid>
 	HEAD
@@ -68,7 +73,7 @@
 		target graph must exist already, unless 'create' is in the query parameters (no value required)
 		body should be object w/ the optional kv pairs below
 		{
-			"seed": true,  // mark any referenced nodes/edges as seeds
+			"seed": true,  // mark any referenced nodes/edges as seeds (nodes are assigned depth=0)
 			"meta": {},    // same structure as POST /graph, merges graph-level kv pairs
 			'chains': [],  // list of node[->edge->node]* object chains
 			'nodes': [],   // list of nodes
@@ -85,6 +90,11 @@
 				1) src and tgt attributes, with node objects as values (as above, must have ID or type/value attributes)
 			b) ID (edge must exist already)
 		When not referenced by ID, nodes and edges will be created as necessary if type/value or type/value/src/tgt combos do not already exist
+
+		Any supplied 'depth' property on a node is silently ignored (use seed flag to set node depth=0).
+		Any supplied 'cost' property on an edge is silently ignored if either is true:
+			a) cost < 0 or cost > 1
+			b) cost > target edge's current cost
 
 	PUT (application/octet-stream)
 		expects graph binary as input
