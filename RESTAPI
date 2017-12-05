@@ -43,16 +43,22 @@
 		elif application/x-msgpack or application/json:
 			QUERY_STRING parameters:
 				q=<pattern> (see LemonGraph/MatchLGQL.py for query pattern docs)
+				crawl=<string> ('0' or not '0')
 				start=<x> (x > 0)
 				stop=<y>  (y > 0)
 				limit=<z> (z >= 0)
-
 			w/out supplied q, the other options are meaningless
 
 			without supplied q:
 				return a full graph dump - only valid for application/json
 				(I have not settled on a streaming format for application/x-msgpack)
 				only other param employed is 'stop' - dumped graph will include
+					changes up to and including supplied ID
+
+			with both q and crawl supplied, and crawl is not '0':
+				return sub-graph[s] - only valid for application/json
+				traverse graph, using chain data returned from queries as starting points
+				only other param employed is 'stop' - dumped sub-graph[s] will include
 					changes up to and including supplied ID
 
 			otherwise:

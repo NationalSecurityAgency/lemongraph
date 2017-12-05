@@ -425,6 +425,29 @@ class _Streamy(object):
             gen = self._stream_js(gen)
         return gen
 
+    def _dump_json(self, txn, uuid, nodes, edges):
+        yield '{"graph":"%s","id":"%s","maxID":%d,"size":%d,"created":"%s","meta":' % (uuid, uuid, txn.lastID, txn.graph.size, uuid_to_utc(uuid))
+        yield self.dumps(dict(txn.iteritems()))
+        yield ',"nodes":['
+        try:
+            n = nodes.next()
+            yield self.dumps(n.as_dict())
+            for n in nodes:
+                yield ','
+                yield self.dumps(n.as_dict())
+        except StopIteration:
+            pass
+        yield '],"edges":['
+        try:
+            e = edges.next()
+            yield self.dumps(self.format_edge(e))
+            for e in edges:
+                yield ','
+                yield self.dumps(self.format_edge(e))
+        except StopIteration:
+            pass
+        yield ']}\n'
+
 class Graph_Root(_Input, _Streamy):
     path = ('graph',)
 
@@ -519,31 +542,6 @@ class Graph_UUID(_Input, _Streamy):
         for block in g.snapshot(bs=BLOCKSIZE):
             yield block
 
-    def _dump_json(self, txn, uuid):
-        yield '{"graph":"%s","id":"%s","maxID":%d,"size":%d,"created":"%s","meta":' % (uuid, uuid, txn.lastID, txn.graph.size, uuid_to_utc(uuid))
-        yield self.dumps(dict(txn.iteritems()))
-        yield ',"nodes":['
-        nodes = txn.nodes()
-        try:
-            n = nodes.next()
-            yield self.dumps(n.as_dict())
-            for n in nodes:
-                yield ','
-                yield self.dumps(n.as_dict())
-        except StopIteration:
-            pass
-        yield '],"edges":['
-        edges = txn.edges()
-        try:
-            e = edges.next()
-            yield self.dumps(self.format_edge(e))
-            for e in edges:
-                yield ','
-                yield self.dumps(self.format_edge(e))
-        except StopIteration:
-            pass
-        yield ']}\n'
-
     single = ('stop', 'start', 'limit')
     multi = ('q',)
 
@@ -591,9 +589,19 @@ class Graph_UUID(_Input, _Streamy):
         except KeyError:
             if self.streamer is not streamJS:
                 raise HTTPError(406, 'Format for full graph dump has not been determined for non-json output')
-            return self._dump_json(txn, uuid)
+            return self._dump_json(txn, uuid, txn.nodes(), txn.edges())
 
         uniq = sorted(set(queries))
+
+        if self.param('crawl', '0') != '0':
+            if self.streamer is not streamJS:
+                raise HTTPError(406, 'Format for graph dump has not been determined for non-json output')
+            try:
+                gen = txn.mquery(uniq)
+            except QuerySyntaxError as e:
+                raise HTTPError(400, str(e))
+            return self.spider(txn, uuid, (chain for _, chain in gen))
+
         qtoc = dict((q, i) for i, q in enumerate(uniq))
         try:
             gen = txn.mquery(uniq, limit=self.limit, start=self.start, stop=self.stop)
@@ -602,6 +610,32 @@ class Graph_UUID(_Input, _Streamy):
         # fixme - should we try to make edges use the format_edge foo here?
         gen = ((qtoc[query], tuple(x.as_dict() for x in chain)) for query, chain in gen)
         return self.stream([uniq], gen)
+
+    # spider out from nodes/edges found in chain data returned from queries
+    def spider(self, txn, uuid, chains):
+        seenIDs = set()
+        edgeIDs = deque()
+
+        def emit_nodes_harvest_edges():
+            todo = deque()
+            for chain in chains:
+                todo.extend(e for e in chain if e.ID not in seenIDs)
+                while todo:
+                    e = todo.popleft()
+                    seenIDs.add(e.ID)
+                    if e.is_edge:
+                        # stash edges for later
+                        edgeIDs.append(e.ID)
+                    else:
+                        # emit nodes
+                        yield e
+                    todo.extend(e2 for e2 in e.iterlinks(filterIDs=seenIDs))
+
+        def emit_edges():
+            for ID in edgeIDs:
+                yield txn.edge(ID=ID)
+
+        return self._dump_json(txn, uuid, emit_nodes_harvest_edges(), emit_edges())
 
     @graphtxn(write=False)
     def head(self, g, txn, _, uuid):
