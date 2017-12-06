@@ -466,6 +466,8 @@ class MatchLGQL(object):
 
         # filter '=' matches by !=, :, !:, ~, and !~
         for key in keys:
+            for i in range(1, len(keys)):
+                exists.discard(key[0:i])
             exists.discard(key)
             key_op_eq = (key, '=')
             if key_op_eq not in d:
