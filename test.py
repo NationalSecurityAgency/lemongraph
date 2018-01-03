@@ -221,6 +221,92 @@ class TestGraph(unittest.TestCase):
         with self.g.transaction(write=False) as txn:
             self.assertEqual(1, txn.nextID)
 
+class TestAlgorithms(unittest.TestCase):
+    serializer = Serializer.msgpack()
+    # each test_foo() method is wrapped w/ setup/teardown around it, so each test has a fresh graph
+    def setUp(self):
+        fd, path = tempfile.mkstemp()
+        os.close(fd)
+        self.g = Graph(path, serialize_property_value=self.serializer)
+
+    def tearDown(self):
+        self.g.delete()
+
+    def test_sp1(self):
+        with self.g.transaction(write=True) as txn:
+            load_data(txn)
+
+        with self.g.transaction(write=False) as txn:
+            n0 = txn.node(**node(0))
+            n1 = txn.node(**node(1))
+            n2 = txn.node(**node(2))
+
+            e0 = edge(0)
+            e1 = edge(1)
+
+            e0['src'] = txn.node(**e0['src'])
+            e0['tgt'] = txn.node(**e0['tgt'])
+            e1['src'] = txn.node(**e1['src'])
+            e1['tgt'] = txn.node(**e1['tgt'])
+
+            e0 = txn.edge(**e0)
+            e1 = txn.edge(**e1)
+
+            expect_path = (n0, e0, n1, e1, n2)
+
+            res_path = n0.shortest_path(n2, directed=False)
+            self.assertEqual(
+                tuple(x.ID for x in expect_path),
+                tuple(x.ID for x in res_path))
+
+            res_path = n0.shortest_path(n2, directed=True)
+            self.assertEqual(
+                tuple(x.ID for x in expect_path),
+                tuple(x.ID for x in res_path))
+
+            fail = n2.shortest_path(n0, directed=True)
+            self.assertEqual(fail, None)
+
+    def test_sp2(self):
+        with self.g.transaction(write=True) as txn:
+            '''
+                 n1a
+                /   \
+              e0a   e1a
+              /       \
+            n0         n2
+              \       /
+              e0b   e1b
+                \   /
+                 n1b
+            '''
+            n0 = txn.node(type='foo', value='0')
+            n1a = txn.node(type='foo', value='1a')
+            n1b = txn.node(type='foo', value='1b')
+            n2 = txn.node(type='foo', value='2')
+            e0a = txn.edge(type='foo', src=n0, tgt=n1a)
+            e0b = txn.edge(type='foo', src=n0, tgt=n1b)
+            e1a = txn.edge(type='foo', src=n1a, tgt=n2)
+            e1b = txn.edge(type='foo', src=n1b, tgt=n2)
+
+            # should transit upper path
+            self.assertPathEqual(n0.shortest_path(n2), (n0, e0a, n1a, e1a, n2))
+
+            # use cost to force it through lower path
+            e1b['cost'] = 0.5
+            self.assertPathEqual(n0.shortest_path(n2, cost_field='cost'), (n0, e0b, n1b, e1b, n2))
+
+            # use default cost to make it find the upper path again
+            self.assertPathEqual(n0.shortest_path(n2, cost_field='cost', cost_default=0.5), (n0, e0a, n1a, e1a, n2))
+
+
+    def assertPathEqual(self, a, b):
+        self.assertEqual(type(a), type(b))
+        if a is not None:
+            self.assertEqual(
+                tuple(x.ID for x in a),
+                tuple(x.ID for x in b))
+
 
 class TestSerializers(unittest.TestCase):
     def test_default(self):

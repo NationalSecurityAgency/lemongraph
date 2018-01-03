@@ -20,6 +20,7 @@ from .hooks import Hooks
 from .dirlist import dirlist
 from .indexer import Indexer
 from .MatchLGQL import QueryCannotMatch, QuerySyntaxError
+from . import algorithms
 
 # these imports happen at the bottom
 '''
@@ -836,6 +837,11 @@ class Node(NodeEdgeProperty):
 
     def dump(self):
         return self.ID, (self.code, self.type, self.value, self.next)
+
+    def shortest_path(self, target, **kwargs):
+        if not isinstance(target, Node):
+            raise ValueError(target)
+        return algorithms.shortest_path(self, target, **kwargs)
 
 
 class Edge(NodeEdgeProperty):
