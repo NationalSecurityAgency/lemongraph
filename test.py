@@ -90,6 +90,7 @@ class TestGraph(unittest.TestCase):
             self.assertEqual(txn.nodes_count(beforeID=n2.ID), 1)
             n3 = txn.node(type="foo", value="blah")
             self.assertEqual(txn.nodes_count(), 3)
+            n1 = txn.node(type="foo", value="bar")
             n1.delete()
             self.assertEqual(txn.nodes_count(), 2)
             self.assertEqual(txn.edges_count(), 0)
