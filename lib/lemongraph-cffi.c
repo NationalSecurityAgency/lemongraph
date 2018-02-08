@@ -7,7 +7,6 @@
 
 #include<db.h>
 #include<lemongraph.h>
-#include<lmdb.h>
 
 void watch_parent(int sig){
 	prctl(PR_SET_PDEATHSIG, sig);
@@ -27,11 +26,15 @@ int graph_set_mapsize(graph_t g, size_t mapsize){
 }
 
 size_t graph_get_mapsize(graph_t g){
-    return db_get_mapsize((db_t)g);
+	size_t size;
+	int r = db_get_mapsize((db_t)g, &size);
+	return r ? 0 : size;
 }
 
 size_t graph_get_disksize(graph_t g){
-    return db_get_disksize((db_t)g);
+	size_t size;
+    int r = db_get_disksize((db_t)g, &size);
+    return r ? 0 : size;
 }
 
 node_t asNode(entry_t e){

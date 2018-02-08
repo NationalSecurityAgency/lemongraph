@@ -1,4 +1,5 @@
 PYTHON=python
+PYTHON_CFLAGS=-O3 -Wall
 CC+=-pipe
 CFLAGS=-fPIC -Wall -Wunused-variable -Wunused-but-set-variable -O3
 CPPFLAGS+=-Ideps/lmdb/libraries/liblmdb -Ilib
@@ -20,26 +21,26 @@ distclean: clean
 	@find deps -mindepth 2 -maxdepth 2 -exec rm -rv {} \;
 
 deps:
-	@$(PYTHON) setup.py check
+	@CFLAGS="$(PYTHON_CFLAGS)" $(PYTHON) setup.py check
 
 deps-update:
 	@git submodule init
 	@git submodule update --remote
 
 build:
-	$(PYTHON) setup.py build
+	CFLAGS="$(PYTHON_CFLAGS)" $(PYTHON) setup.py build
 
 test: test.py deps
-	$(PYTHON) $<
+	CFLAGS="$(PYTHON_CFLAGS)" $(PYTHON) $<
 
 install:
-	$(PYTHON) setup.py install
+	CFLAGS="$(PYTHON_CFLAGS)" $(PYTHON) setup.py install
 
 uninstall:
-	$(PYTHON) setup.py uninstall
+	CFLAGS="$(PYTHON_CFLAGS)" $(PYTHON) setup.py uninstall
 
 sdist:
-	$(PYTHON) setup.py sdist
+	CFLAGS="$(PYTHON_CFLAGS)" $(PYTHON) setup.py sdist
 
 snapshot:
 	@rm -rf $(SNAPSHOT) $(SNAPSHOT).zip

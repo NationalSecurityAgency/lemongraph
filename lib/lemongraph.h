@@ -4,8 +4,6 @@
 #include<inttypes.h>
 #include<sys/types.h>
 
-#include<lmdb.h>
-
 #include"db.h"
 
 // log entry types
@@ -84,13 +82,13 @@ struct prop_t {
 
 char *graph_strerror(int err);
 
-graph_t graph_open(const char * const path, const int flags, const int mode, int mdb_flags);
+graph_t graph_open(const char * const path, const int flags, const int mode, int db_flags);
 graph_txn_t graph_txn_begin(graph_t g, graph_txn_t parent, unsigned int flags);
 int graph_txn_updated(graph_txn_t txn);
 int graph_txn_reset(graph_txn_t txn);
 int graph_txn_commit(graph_txn_t txn);
 void graph_txn_abort(graph_txn_t txn);
-void graph_sync(graph_t g, int force);
+int graph_sync(graph_t g, int force);
 int graph_updated(graph_t g);
 size_t graph_size(graph_t g);
 void graph_remap(graph_t g);

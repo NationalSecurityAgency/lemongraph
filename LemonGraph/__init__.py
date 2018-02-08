@@ -83,16 +83,14 @@ class Graph(object):
             if excl:
                 os_flags |= lib.O_EXCL
 
-        if nosubdir:
-            flags |= lib.MDB_NOSUBDIR
         if noreadahead:
-            flags |= lib.MDB_NORDAHEAD
+            flags |= lib.DB_NORDAHEAD
         if nosync:
-            flags |= lib.MDB_NOSYNC
+            flags |= lib.DB_NOSYNC
         if nometasync:
-            flags |= lib.MDB_NOMETASYNC
+            flags |= lib.DB_NOMETASYNC
         if notls:
-            flags |= lib.MDB_NOTLS
+            flags |= lib.DB_NOTLS
 
         self._graph = lib.graph_open(path, os_flags, mode, flags)
 
@@ -301,7 +299,7 @@ class CommitTransaction(EndTransaction):
 class Transaction(GraphItem):
     reserved = ()
 
-    # only use a transaction from within the creating thread, unless txn is readonly and MDB_NOTLS was specified
+    # only use a transaction from within the creating thread, unless txn is readonly and DB_NOTLS was specified
     def __init__(self, graph, write=True, beforeID=None, _parent=None):
         self.graph = graph
         for func in graph.serializers:
@@ -310,10 +308,10 @@ class Transaction(GraphItem):
         self.beforeID = 0 if beforeID is None else int(beforeID)
         self._parent = ffi.NULL if _parent is None else _parent
         self._txn = None
-        self.txn_flags = 0 if write else lib.MDB_RDONLY
+        self.txn_flags = 0 if write else lib.DB_RDONLY
         self.adapters = graph.adapters if write else None
 
-    # create a child transaction - not possible if MDB_WRITEMAP is enabled
+    # create a child transaction - not possible if DB_WRITEMAP was enabled (it is disabled)
     def transaction(self, write=None, beforeID=None):
         return Transaction(self.graph,
             self.write if write is None else write,

@@ -462,9 +462,9 @@ class Collection(object):
                 except KeyError:
                     continue
 
-            # Note - we assume user is not using MDB_WRITEMAP which is reasonable because:
-            #   LemonGraph does not currently expose that
-            # If it did, we might have to mmap the whole region and msync it - maybe?
+            # Note - we assume user is not using DB_WRITEMAP which is reasonable because:
+            #   LemonGraph explicitly disables that
+            # Otherwise, we might have to mmap the whole region and msync it - maybe?
             # Opening it via LemonGraph adds overhead, burns double the file descriptors, and
             # currently explodes if I try to set RLIMIT_NOFILE > 2050. I know not why.
             # We also assume that fdatasync() is good, which it is for Linux >= 3.6
