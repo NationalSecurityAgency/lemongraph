@@ -815,7 +815,7 @@ class Graph_Exec(_Input, _Streamy):
         txns_uuids = self._txns_uuids(uuids)
         try:
             exec code in globals, locals
-            params = dict((k, v) if len(v) > 1 else (k, v[0]) for k, v in self.params.iteritems() if k not in eat_params)
+            params = dict((k, v) if len(v) > 1 else (k, v[0]) for k, v in self.params.iteritems() if k not in self.eat_params)
             try:
                 handler = locals['handler']
             except KeyError:

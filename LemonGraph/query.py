@@ -1,4 +1,5 @@
 from collections import deque, defaultdict
+from itertools import chain
 
 from . import Node, Edge
 from .MatchLGQL import MatchLGQL, MatchCTX, QueryCannotMatch, eval_test
@@ -126,7 +127,7 @@ class Query(object):
                     h.append(self._scan_mutable(triggers['T'], target.tgt, seen, target.ID))
                 except KeyError:
                     pass
-                return itertools.chain.from_iterable(h)
+                return chain.from_iterable(h)
             handlers['E'] = _edge_handler
 
         if 'N' in triggers:
