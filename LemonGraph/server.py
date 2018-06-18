@@ -1,3 +1,4 @@
+from __future__ import print_function
 from . import Serializer, Node, Edge, Adapters, QuerySyntaxError, merge_values
 from .collection import Collection, uuid_to_utc
 from .lock import Lock
@@ -85,7 +86,7 @@ class SeedTracker(object):
     def seeds(self):
         try:
             gen = self._seed.itervalues()
-            gen.next()
+            next(gen)
         except (KeyError, StopIteration):
             return ()
         return gen
@@ -410,7 +411,7 @@ class _Streamy(object):
     def _stream_js(self, gen):
         yield '['
         try:
-            x = gen.next()
+            x = next(gen)
             yield x
             for x in gen:
                 yield ','
@@ -430,7 +431,7 @@ class _Streamy(object):
         yield self.dumps(dict(txn.iteritems()))
         yield ',"nodes":['
         try:
-            n = nodes.next()
+            n = next(nodes)
             yield self.dumps(n.as_dict())
             for n in nodes:
                 yield ','
@@ -439,7 +440,7 @@ class _Streamy(object):
             pass
         yield '],"edges":['
         try:
-            e = edges.next()
+            e = next(edges)
             yield self.dumps(self.format_edge(e))
             for e in edges:
                 yield ','
@@ -766,7 +767,7 @@ class D3_UUID(_Streamy, Handler):
         nidx = 0
         nodes = txn.nodes()
         try:
-            n = nodes.next()
+            n = next(nodes)
             nmap[n.ID] = nidx
             nidx += 1
             yield self.dumps({ 'data': n.as_dict() })
@@ -780,7 +781,7 @@ class D3_UUID(_Streamy, Handler):
         yield '],"edges":['
         edges = txn.edges()
         try:
-            e = edges.next()
+            e = next(edges)
             yield self.dumps({
                 'data': e.as_dict(),
                 'source': nmap[e.srcID],
@@ -814,7 +815,7 @@ class Graph_Exec(_Input, _Streamy):
 
         txns_uuids = self._txns_uuids(uuids)
         try:
-            exec code in globals, locals
+            exec(code, globals, locals)
             params = dict((k, v) if len(v) > 1 else (k, v[0]) for k, v in self.params.iteritems() if k not in eat_params)
             try:
                 handler = locals['handler']
@@ -850,7 +851,7 @@ class Graph_UUID_Exec(_Input, _Streamy):
             'HTTPError': HTTPError,
         }
         try:
-            exec code in globals, locals
+            exec(code, globals, locals)
             params = dict((k, v) if len(v) > 1 else (k, v[0]) for k, v in self.params.iteritems())
             try:
                 handler = locals['handler']
@@ -1102,23 +1103,23 @@ def update_depth_cost():
                     apply_cost(txn, entry)
 
 def usage(msg=None, fh=sys.stderr):
-    print >>fh, 'Usage: python -mLemonGraph.server <options> [graphs-dir]'
-    print >>fh, ''
-    print >>fh, 'Options:'
-    print >>fh, '  -i <bind-ip>        (127.0.0.1)'
-    print >>fh, '  -p <bind-port>      (8000)'
-    print >>fh, '  -d <poll-delay-ms>  (250)'
-    print >>fh, '  -w <workers>        (#cpu cores)'
-    print >>fh, '  -l <log-level>      (info)'
-    print >>fh, '  -t <timeout>        (3 seconds)'
-    print >>fh, '  -b <buflen>         (1048576)'
-    print >>fh, '  -s                  enable nosync for graph dbs'
-    print >>fh, '  -m                  enable nometasync for graph dbs'
-    print >>fh, '  -r                  rebuild index'
-    print >>fh, '  -h                  print this help and exit'
+    print('Usage: python -mLemonGraph.server <options> [graphs-dir]', file=fh)
+    print('', file=fh)
+    print('Options:', file=fh)
+    print('  -i <bind-ip>        (127.0.0.1)', file=fh)
+    print('  -p <bind-port>      (8000)', file=fh)
+    print('  -d <poll-delay-ms>  (250)', file=fh)
+    print('  -w <workers>        (#cpu cores)', file=fh)
+    print('  -l <log-level>      (info)', file=fh)
+    print('  -t <timeout>        (3 seconds)', file=fh)
+    print('  -b <buflen>         (1048576)', file=fh)
+    print('  -s                  enable nosync for graph dbs', file=fh)
+    print('  -m                  enable nometasync for graph dbs', file=fh)
+    print('  -r                  rebuild index', file=fh)
+    print('  -h                  print this help and exit', file=fh)
     if msg is not None:
-        print >>fh, ''
-        print >>fh, msg
+        print('', file=fh)
+        print(msg, file=fh)
     sys.exit(1)
 
 def main():

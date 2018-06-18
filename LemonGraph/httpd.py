@@ -168,7 +168,7 @@ class Chunks(object):
     def chunkify(self, gen):
         bs = self.bs
         chunks = self.chunks()
-        chunk = chunks.next()
+        chunk = next(chunks)
 
         pos = 0
         for src in gen:
@@ -185,14 +185,14 @@ class Chunks(object):
                 # pad buffer out to end using first n bytes from src
                 chunk.payload[pos:bs] = src[0:soff]
                 yield chunk
-                chunk = chunks.next()
+                chunk = next(chunks)
                 pos = 0
 
                 # then carve off full blocks directly from src
                 while soff + bs <= slen:
                     chunk.payload[0:bs] = src[soff:soff+bs]
                     yield chunk
-                    chunk = chunks.next()
+                    chunk = next(chunks)
                     soff += bs
 
                 # and stash the remainder
@@ -732,7 +732,7 @@ class Headers(object):
         return self.norm(header) in self.data
 
     def __setitem__(self, header, value):
-        if isinstance(value, types.StringTypes):
+        if isinstance(value, (str,)):
             self.data[self.norm(header)] = Header(header, value)
         else:
             self.data[self.norm(header)] = Header(header, *value)
