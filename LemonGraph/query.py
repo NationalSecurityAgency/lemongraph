@@ -1,3 +1,4 @@
+import itertools
 from collections import deque, defaultdict
 from itertools import chain
 
