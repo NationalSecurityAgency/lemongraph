@@ -1,3 +1,4 @@
+from __future__ import print_function
 from . import Graph, Serializer, QuerySyntaxError
 
 import msgpack
@@ -54,21 +55,21 @@ def do_query(txn, query, start=0, stop=0, interactive=False):
             mode = 'dump'
             total = None
         elif 'g' == query:
-            print dict( (k, v) for k,v in txn.iteritems() )
+            print(dict( (k, v) for k,v in txn.iteritems() ))
             mode = 'graph properties'
             total = None
         elif len(queries) > 1:
-            print queries
+            print(queries)
             for q, chain in txn.mquery(queries, cache=cache, start=start, stop=stop):
-                print q, chain
+                print(q, chain)
                 total += 1
         else:
             for chain in txn.query(query, cache=cache, start=start, stop=stop):
-                print chain
+                print(chain)
                 total += 1
     except KeyboardInterrupt:
         if interactive:
-            print >>sys.stderr, "<cancelled>"
+            print("<cancelled>", file=sys.stderr)
         else:
             raise
     tstop = time.time()
@@ -106,19 +107,19 @@ def main(g):
                 m = RANGE1.match(line)
                 if m:
                     start, stop = parse_range(m)
-                    print "streaming %s" % ('enabled' if start else 'disabled')
+                    print("streaming %s" % ('enabled' if start else 'disabled'))
                     prompt = None
                     line = None
 
                 elif line in ('help','?'):
-                    print HELP
+                    print(HELP)
                     line = None
 
                 elif 'r' == line:
                     line = prompt = None
                 elif 'history' == line:
                     for i in xrange(1, readline.get_current_history_length()):
-                        print readline.get_history_item(i)
+                        print(readline.get_history_item(i))
                     line = None
 
                 if line or prompt is None:
@@ -127,14 +128,14 @@ def main(g):
                             try:
                                 total, delta, mode = do_query(txn, line, start=start, stop=stop if stop else lastID, interactive=True)
                             except QuerySyntaxError as e:
-                                print >>sys.stderr, str(e)
+                                print(str(e), file=sys.stderr)
                                 total = None
                                 mode = 'error'
                                 delta = 0
                             if total is None:
-                                print "\n%s (%f seconds)\n" % (mode, delta)
+                                print("\n%s (%f seconds)\n" % (mode, delta))
                             else:
-                                print "\n%d chains (%f seconds, %s)\n" % (total, delta, mode)
+                                print("\n%d chains (%f seconds, %s)\n" % (total, delta, mode))
                         if lastID != txn.lastID:
                             lastID = txn.lastID
                             prompt = None

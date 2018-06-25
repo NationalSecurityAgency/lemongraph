@@ -1,3 +1,4 @@
+from __future__ import print_function
 import os
 import platform
 import stat
@@ -29,10 +30,10 @@ def git_submodule_init():
 
 
 def do_curl(url):
-    print >> sys.stderr, "Fetching: %s" % url
+    print("Fetching: %s" % url, file=sys.stderr)
     cmd = ('curl', '-L', url)
     p = subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE)
-    print >> sys.stderr, url
+    print(url, file=sys.stderr)
     blen = 0
     for chunk in p.stdout:
         blen += len(chunk)
@@ -72,14 +73,14 @@ def fetch_js():
         try:
             s2 = os.stat(target)
         except OSError:
-            print >> sys.stderr, "Hard linking: %s -> %s" % (source, target)
+            print("Hard linking: %s -> %s" % (source, target), file=sys.stderr)
             os.link(source, target)
             continue
 
         for i in (stat.ST_INO, stat.ST_DEV):
             if s1[i] != s2[i]:
                 os.unlink(target)
-                print >> sys.stderr, "Hard linking: %s -> %s" % (source, target)
+                print("Hard linking: %s -> %s" % (source, target), file=sys.stderr)
                 os.link(source, target)
                 break
 

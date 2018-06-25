@@ -1,3 +1,4 @@
+from __future__ import print_function
 import re
 import sys
 import itertools
@@ -571,17 +572,17 @@ class MatchLGQL(object):
                 yield seed
 
     def dump(self, fh=sys.stdout):
-        print >>fh, '['
+        print('[', file=fh)
         for p in self.matches:
             pre = dict( (key, val) for key, val in p.iteritems() if key != 'tests' )
             if p['tests']:
-                print >>fh, '\t%s:[' % pre
+                print('\t%s:[' % pre, file=fh)
                 for test in p['tests']:
-                    print >>fh, "\t\t", test, ","
-                print >>fh, "\t],"
+                    print("\t\t", test, ",", file=fh)
+                print("\t],", file=fh)
             else:
-                print >>fh, '\t%s:[],' % pre
-        print >>fh, ']'
+                print('\t%s:[],' % pre, file=fh)
+        print(']', file=fh)
 
     def is_valid(self, obj, idx=0, skip_fudged=False):
         match = self.matches[idx]

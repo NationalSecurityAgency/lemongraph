@@ -1,3 +1,4 @@
+import itertools
 from collections import deque, defaultdict
 
 from . import Node, Edge

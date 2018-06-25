@@ -1,3 +1,4 @@
+from __future__ import print_function
 try:
     from ._lemongraph_cffi import ffi, lib
 except ImportError:
@@ -67,7 +68,7 @@ def merge_values(a, b):
 class Graph(object):
     serializers = tuple('serialize_' + x for x in ('node_type', 'node_value', 'edge_type', 'edge_value', 'property_key', 'property_value'))
 
-    def __init__(self, path, flags=0, mode=0760, nosubdir=True, noreadahead=False, notls=False, nosync=False, nometasync=False, readonly=False, create=True, excl=False, hooks=Hooks(), adapters=None, **kwargs):
+    def __init__(self, path, flags=0, mode=0o760, nosubdir=True, noreadahead=False, notls=False, nosync=False, nometasync=False, readonly=False, create=True, excl=False, hooks=Hooks(), adapters=None, **kwargs):
         self._graph = None
         for func in self.serializers:
             setattr(self, func, kwargs.pop(func, None) or self.default_serializer)
@@ -492,13 +493,13 @@ class Transaction(GraphItem):
         """pretty printer"""
         out = kwargs.pop('out', sys.stdout)
         for obj in self.scan(**kwargs):
-            print >>out, obj.pretty()
+            print(obj.pretty(), file=out)
 
     def dump(self, **kwargs):
         """not-so-pretty printer"""
         out = kwargs.pop('out', sys.stdout)
         for obj in self.scan(**kwargs):
-            print >>out, obj.dump()
+            print(obj.dump(), file=out)
 
     def kv(self, domain, map_data=False, map_keys=False, serialize_key=None, serialize_value=None):
         """domain-specific key/value storage"""
@@ -1033,7 +1034,7 @@ class Adapters(object):
                 gen = gen()
 
             try:
-                pattern = gen.next()
+                pattern = next(gen)
             except StopIteration:
                 raise Exception("generator failed to return pattern (or None)")
 
