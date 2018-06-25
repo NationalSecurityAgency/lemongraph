@@ -732,7 +732,7 @@ class Headers(object):
         return self.norm(header) in self.data
 
     def __setitem__(self, header, value):
-        if isinstance(value, (str,)):
+        if isinstance(value, (str, u'')):
             self.data[self.norm(header)] = Header(header, value)
         else:
             self.data[self.norm(header)] = Header(header, *value)
