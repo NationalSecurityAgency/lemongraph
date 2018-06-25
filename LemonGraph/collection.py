@@ -15,6 +15,11 @@ from pysigset import suspended_signals
 
 from . import Graph, Serializer, Transaction, Hooks, dirlist, Indexer, Query
 
+try:
+    xrange          # Python 2
+except NameError:
+    xrange = range  # Python 3
+
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
 

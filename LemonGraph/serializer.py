@@ -2,6 +2,12 @@ from . import ffi, lib
 import msgpack as messagepack
 import collections
 
+try:
+    xrange          # Python 2
+except NameError:
+    xrange = range  # Python 3
+
+
 def msgpack_encode_hashable(x):
     if not isinstance(x, collections.Hashable):
         raise ValueError(x)
