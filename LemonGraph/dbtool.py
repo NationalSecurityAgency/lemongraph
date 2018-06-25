@@ -150,7 +150,7 @@ def main(g):
 
 if '__main__' == __name__:
     if len(sys.argv) != 2:
-        print "Database file path required!"
+        print("Database file path required!")
         sys.exit()
     with Graph(sys.argv[1], serialize_property_value=s, create=False) as g:
         main(g)
