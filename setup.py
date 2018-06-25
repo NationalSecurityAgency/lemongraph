@@ -50,7 +50,7 @@ def fetch_js():
         'd3.v4.min.js': 'https://d3js.org/d3.v4.min.js',
         'svg-crowbar.js': 'https://nytimes.github.io/svg-crowbar/svg-crowbar.js',
     }
-    for js, url in libs.iteritems():
+    for js, url in libs.items():
         target = os.path.sep.join(('LemonGraph', 'data', js))
         source = os.path.sep.join(('deps', 'js', js))
         dotsource = os.path.sep.join(('deps', 'js', '.%s' % js))
@@ -104,7 +104,7 @@ if __name__ == "__main__":
         version='0.9.0',
         description='LemonGraph Database',
         packages=['LemonGraph'],
-        package_data={b'LemonGraph': ['data/*']},
+        package_data={'LemonGraph': ['data/*']},
         install_requires=reqs,
         **keywords_with_side_effects(
             sys.argv,

@@ -9,7 +9,11 @@ except ImportError:
     from .cffi_stubs import ffi, C_HEADER_SRC, C_KEYWORDS
     lib = ffi.verify(C_HEADER_SRC, **C_KEYWORDS)
 
-import __builtin__ as builtin
+try:
+    import __builtin__ as builtin
+except ImportError:
+    import builtins as builtin
+
 from collections import deque, defaultdict
 import itertools
 from lazy import lazy
