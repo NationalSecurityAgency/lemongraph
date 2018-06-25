@@ -38,12 +38,13 @@ class Fifo(object):
             except OverflowError:
                 # rebase entries
                 offset = None
-                for idx, data in KVIterator(self):
+                for idx, d2 in KVIterator(self):
                     try:
                         key = self.serialize_key.encode(idx - offset)
                     except TypeError:
                         offset = idx
                         key = self.serialize_key.encode(0)
+                    value = self.serialize_value.encode(d2)
                     if not lib.kv_put(self._kv, key, len(key), value, len(value)):
                         raise IOError()
 
