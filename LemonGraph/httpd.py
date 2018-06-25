@@ -558,7 +558,7 @@ class Response(object):
     @code.setter
     def code(self, newcode):
         if newcode not in self.codes:
-            raise Exception('unsupported http error code: %d' % code)
+            raise Exception('unsupported http error code: %d' % newcode)
         self._code = newcode
 
     def json(self, doc):
