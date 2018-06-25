@@ -1,6 +1,17 @@
 # LemonGraph
 
-LemonGraph is a log-based transactional graph (nodes/edges/properties) database engine that is backed by a single file. The primary use case is to support streaming seed set expansion. The core of the graph library is written in C, and the Python (2.x) layer adds [friendly bindings](#python-example), a [query language](#query-language), and a [REST service](#rest-service). LemonGraph rides on top of (and inherits a lot of awesome from) Symas LMDB - a transactional key/value store that the OpenLDAP project developed to replace BerkeleyDB.
+LemonGraph is a log-based transactional graph (nodes/edges/properties) database engine that is backed by a single file. The primary use case is to support streaming seed set expansion - something along the lines of:
+
+1. Create new graph
+2. In client code, initialize log position bookmark: `pos = 0`
+3. Inject seed data into graph
+4. Starting at log position `pos`, query graph for desired patterns
+5. Process returned results
+6. Update client log position bookmark `pos = nextID` (either `txn.nextID` or via http header: `X-lg-maxID` + 1)
+7. Inject new data into graph
+8. Goto step 4
+
+The core of the graph library is written in C, and the Python (2.x) layer adds [friendly bindings](#python-example), a [query language](#query-language), and a [REST service](#rest-service). LemonGraph rides on top of (and inherits a lot of awesome from) Symas LMDB - a transactional key/value store that the OpenLDAP project developed to replace BerkeleyDB.
 
 # Benchmarks
 
