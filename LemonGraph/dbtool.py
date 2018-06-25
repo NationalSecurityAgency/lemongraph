@@ -8,6 +8,11 @@ import readline
 import sys
 import time
 
+try:
+    xrange          # Python 2
+except NameError:
+    xrange = range  # Python 3
+
 s = Serializer.msgpack()
 cache = {}
 
