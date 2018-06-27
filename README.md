@@ -15,13 +15,13 @@ The core of the graph library is written in C, and the Python (2.x) layer adds [
 
 # Benchmarks
 
-Using PyPy 4.0 on physical hardware (3ghz X5670, plenty of RAM), under a single transaction:
+Using PyPy 6.0 and stock CentOS 7 Python 2.7.5, under a single transaction (3.4ghz i7-4770, plenty of RAM):
 
-| Seconds | Storage (mb) | Speed (per second) | Operation(s)                                       |
-| ------- | ------------ | ------------------ | -------------------------------------------------- |
-| 4.5     | 96           | 222k nodes         | insert 1 million nodes                             |
-| 11      | 204          | 153k properties    | above, plus setting a single property on each node |
-| 410     | 1856         | 25k edges          | above, plus adding 10 million random edges         |
+| Operation                        | Total Storage | Time (PyPy) | Rate (PyPy)   | Time (Python) | Rate (Python) |
+| ---------------------------------| ------------- | ----------- | ------------- | ------------- | ------------- |
+| insert 1 million nodes           | 108 mb        | 3.5s        | 287k nodes/s  | 13.7s         | 73k edges/s   |
+| set single property on each node | 157 mb        | 2.2s        | 456k props/s  | 5.2s          | 192k edges/s  |
+| add 1 million random edges       | 293 mb        | 6.0s        | 166k edges/s  | 15.0s         | 66k edges/s   |
 
 # Features
 
@@ -62,10 +62,10 @@ Note that the REST service cannot run on CentOS 6's Python 2.6, as we rely on th
 * CPython on Ubuntu 15.04 - 16.04:
 	* `apt-get install libffi-dev zlib1g-dev python-dev python-cffi`
 * CPython (compiled) - just bootstrap setuptools and install cffi:
-	* `curl https://bootstrap.pypa.io/ez_setup.py | python -`
+	* `python -mensurepip`
 	* `easy_install 'cffi>=1.0'`
 * Pypy - just bootstrap setuptools - cffi is bundled:
-	* `curl https://bootstrap.pypa.io/ez_setup.py | pypy -`
+	* `pypy -mensurepip`
 
 ## LemonGraph installation
 * `python setup.py install` (or you know, pypy)
