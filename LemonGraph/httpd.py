@@ -110,7 +110,6 @@ class Chunk(object):
         self.hlen = hlen = len(header)
         self.ba = bytearray(hlen + bs + 2)
         self.mem = memoryview(self.ba)
-        self.rmem = buffer(self.ba)
         self.header = self.mem[0:hlen]
         self.payload = self.mem[hlen:hlen+bs]
         self.payload_plus = self.mem[hlen:hlen+bs+2]
@@ -129,12 +128,12 @@ class Chunk(object):
     @property
     def chunk(self):
         if self.size == self.bs:
-            return self.rmem
+            return self.mem
         return self._wrap(self.size)
 
     @property
     def body(self):
-        return buffer(self.ba, self.hlen, self.size)
+        return self.mem[self.hlen : self.hlen + self.size]
 
     def _wrap(self, size):
         # update header
@@ -146,11 +145,17 @@ class Chunk(object):
         # add footer
         self.payload_plus[size:size+2] = '\r\n'
         if size == self.bs:
-            return self.rmem
-        return buffer(self.ba, self.hoffset, self.size + hlen + 2)
+            return self.mem
+        return self.mem[self.hoffset : self.hoffset + self.size + hlen + 2]
 
 
 class Chunks(object):
+    _handlers = {
+            type(b''):  lambda data: data,
+            type(u''):  lambda data: data.encode("UTF-8"),
+            type(None): lambda data: b'',
+        }
+
     def __init__(self, bs=1048576):
         # clamp output buffer size to be between 1k and 10m
         self.bs = bs = sorted((1024, int(bs), 10485760))[1]
@@ -172,8 +177,7 @@ class Chunks(object):
 
         pos = 0
         for src in gen:
-            srctype = type(src)
-            src = memoryview(src) if srctype in (str, buffer, bytearray, memoryview) else memoryview(str(src))
+            src = self._memview(src)
             slen = len(src)
             try:
                 # fast append
@@ -202,6 +206,18 @@ class Chunks(object):
         if pos:
             yield chunk(pos)
 
+    def _memview(self, data):
+        try:
+            handler = self._handlers[type(data)]
+        except KeyError:
+            handler = None
+            for t in self._handlers:
+                if isinstance(data, t):
+                    handler = self._handlers[type(data)] = self._handlers[t]
+                    break
+            if handler is None:
+                raise TypeError
+        return memoryview(handler(data))
 
 # because every multiprocessing.Process().start() very helpfully
 # does a waitpid(WNOHANG) across all known children, and I want
@@ -445,8 +461,8 @@ class Service(object):
     @lazy
     def jump(self):
         return {
-            str:        self._fixed,
-            unicode:    self._unicode,
+            type(b''):  self._fixed,
+            type(u''):  self._unicode,
             type(None): self._none,
             generator:  self._chunked,
             iterator:   self._chunked,
@@ -462,7 +478,7 @@ class Service(object):
         self.res.send(body)
 
     def _unicode(self, body):
-        self._fixed(str(body))
+        self._fixed(body.encode('UTF-8'))
 
     def _none(self, body):
         self._fixed(b'')
