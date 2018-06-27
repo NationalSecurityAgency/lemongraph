@@ -36,7 +36,7 @@ STRING = re.compile(r'^.+$')
 
 def date_to_timestamp(s):
     dt = dateutil.parser.parse(s)
-    return time.mktime(dt.utctimetuple()) + dt.microsecond / 1e6
+    return time.mktime(dt.utctimetuple()) + dt.microsecond // 1e6
 
 def js_dumps(obj, pretty=False):
     txt = json_encode(obj)
