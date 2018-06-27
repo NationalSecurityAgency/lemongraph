@@ -17,11 +17,11 @@ The core of the graph library is written in C, and the Python (2.x) layer adds [
 
 Using PyPy 6.0 and stock CentOS 7 Python 2.7.5, under a single transaction (3.4ghz i7-4770, plenty of RAM):
 
-| Operation                        | Total Storage | Time (PyPy) | Rate (PyPy)   | Time (Python) | Rate (Python) |
-| ---------------------------------| ------------- | ----------- | ------------- | ------------- | ------------- |
-| insert 1 million nodes           | 108 mb        | 3.5s        | 287k nodes/s  | 13.7s         | 73k edges/s   |
-| set single property on each node | 157 mb        | 2.2s        | 456k props/s  | 5.2s          | 192k edges/s  |
-| add 1 million random edges       | 293 mb        | 6.0s        | 166k edges/s  | 15.0s         | 66k edges/s   |
+| Operation                    | Total Storage | Time (PyPy) | Rate (PyPy)   | Time (Python) | Rate (Python) |
+| ---------------------------- | ------------- | ----------- | ------------- | ------------- | ------------- |
+| insert 1 million nodes       | 108 mb        | 3.5s        | 287k nodes/s  | 13.7s         | 73k edges/s   |
+| add a property on each node  | 157 mb        | 2.2s        | 456k props/s  | 5.2s          | 192k edges/s  |
+| add 1 million random edges   | 293 mb        | 6.0s        | 166k edges/s  | 15.0s         | 66k edges/s   |
 
 # Features
 
