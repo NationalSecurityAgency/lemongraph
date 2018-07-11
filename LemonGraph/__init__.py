@@ -14,10 +14,11 @@ try:
 except ImportError:
     import builtins as builtin
 
-from collections import deque, defaultdict
+from collections import deque
 import itertools
 from lazy import lazy
 import os
+from six import iteritems, itervalues
 import sys
 
 from .callableiterable import CallableIterableMethod
@@ -26,6 +27,7 @@ from .dirlist import dirlist
 from .indexer import Indexer
 from .MatchLGQL import QueryCannotMatch, QuerySyntaxError
 from . import algorithms
+from . import wire
 
 # these imports happen at the bottom
 '''
@@ -35,6 +37,18 @@ from .fifo import Fifo
 from .serializer import Serializer
 from .sset import SSet
 '''
+
+# so I can easily create keys/items/values class
+# methods that behave as the caller expects
+def listify_py2(func):
+    # for Python 3+, return the supplied iterator/generator
+    if sys.version_info[0] > 2:
+        return func
+
+    # for Python 2, slurp the result into a list
+    def listify(*args, **kwargs):
+        return list(func(*args, **kwargs))
+    return listify
 
 # todo:
 #   think about splitting deletes off into its own btree so the log is truly append-only
@@ -54,7 +68,7 @@ def merge_values(a, b):
     """merges nested dictionaries, in case of type mismatch or non-dictionary, overwrites fields in a from b"""
     if isinstance(b, dict):
         if isinstance(a, dict):
-            for k, v in b.iteritems():
+            for k, v in iteritems(b):
                 a[k] = merge_values(a.get(k,None), v)
             return a
     elif isinstance(b, (tuple, list)):
@@ -97,7 +111,7 @@ class Graph(object):
         if notls:
             flags |= lib.DB_NOTLS
 
-        self._graph = lib.graph_open(path, os_flags, mode, flags)
+        self._graph = lib.graph_open(wire.encode(path), os_flags, mode, flags)
 
         if self._graph == ffi.NULL:
             raise IOError(ffi.errno, ffi.string(lib.graph_strerror(ffi.errno)))
@@ -179,13 +193,15 @@ class SnapshotIterator(object):
     def __iter__(self):
         return self
 
-    def next(self):
+    def __next__(self):
         if self._buffer is None:
             self._buffer = ffi.new('unsigned char[]', self.bs)
         buflen = lib.db_snapshot_read(self._data, self._buffer, self.bs)
         if 0 == buflen:
             raise StopIteration
-        return str(ffi.buffer(self._buffer, buflen))
+        return ffi.buffer(self._buffer, buflen)[:]
+
+    next = __next__
 
 
 class GraphItem(object):
@@ -210,7 +226,7 @@ class GraphItem(object):
     def string(self, ID):
         size = ffi.new('size_t *')
         buffer = lib.graph_string(self._txn, ID, size)
-        return ffi.buffer(buffer, size[0])
+        return ffi.buffer(buffer, size[0])[:]
 
     # fetch graph/node/edge/property property object by key
     # yes, the graph itself as well as properties may have child properties
@@ -281,14 +297,9 @@ class GraphItem(object):
     def itervalues(self):
         return self.properties(handler=lambda p: p.value)
 
-    def items(self):
-        return list(self.iteritems())
-
-    def keys(self):
-        return list(self.iterkeys())
-
-    def values(self):
-        return list(self.itervalues())
+    keys = listify_py2(iterkeys)
+    items = listify_py2(iteritems)
+    values = listify_py2(itervalues)
 
 
 class EndTransaction(Exception):
@@ -356,19 +367,20 @@ class Transaction(GraphItem):
         else:
             # no updates? just abort
             lib.graph_txn_abort(self._txn)
-        return True
 
     def __exit__(self, type, value, traceback):
+        suppress = False
         try:
             if type is None:
-                suppress = self._commit()
-            elif type is AbortTransaction:
-                suppress = self is value.txn
+                self._commit()
+            elif type is AbortTransaction and self is value.txn:
+                suppress = True
                 lib.graph_txn_abort(self._txn)
-            elif type is CommitTransaction:
-                suppress = self._commit() if self is value.txn else lib.graph_txn_abort(self._txn)
+            elif type is CommitTransaction and self is value.txn:
+                suppress = True
+                self._commit()
             else:
-                suppress = lib.graph_txn_abort(self._txn)
+                lib.graph_txn_abort(self._txn)
             return suppress
         finally:
             self.graph = self._txn = self._parent = None
@@ -554,13 +566,13 @@ class Transaction(GraphItem):
                 else:
                     # collect changes for up to $batch node/edges before yielding change sets
                     if len(changed) == batch:
-                        for before_after_keys in changed.itervalues():
+                        for before_after_keys in itervalues(changed):
                             before_after_keys.append(ID)
                             yield tuple(before_after_keys)
                         changed.clear()
                     # snag copy of the object just before this update (might not exist yet), this object, and affected keys
                     changed[obj.ID] = [obj.clone(beforeID=ID), obj, set(keys), ID, ID]
-        for before_after_keys in changed.itervalues():
+        for before_after_keys in itervalues(changed):
             before_after_keys.append(ID)
             yield tuple(before_after_keys)
 
@@ -627,7 +639,7 @@ class NodeEdgeProperty(GraphItem):
         self.next = int(_data.next)
         if properties is None:
             return
-        for key, value in properties.iteritems():
+        for key, value in iteritems(properties):
             self.set(key, value, merge=merge)
 
     @builtin.property
@@ -1004,7 +1016,7 @@ class Iterator(object):
     def __iter__(self):
         return self
 
-    def next(self):
+    def __next__(self):
         while True:
             _data = self.next_func(self._iter)
             if _data == ffi.NULL:
@@ -1020,6 +1032,7 @@ class Iterator(object):
         if self._iter is not None:
             lib.graph_iter_close(self._iter)
 
+    next = __next__
 
 # constructor glue
 ConstructorsByRecType[lib.GRAPH_NODE] = Node

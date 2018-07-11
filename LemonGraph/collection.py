@@ -6,6 +6,7 @@ import os
 import re
 import resource
 import signal
+from six import iteritems, iterkeys
 import sys
 from time import sleep, time
 import uuid
@@ -13,7 +14,7 @@ import uuid
 from lazy import lazy
 from pysigset import suspended_signals
 
-from . import Graph, Serializer, Transaction, Hooks, dirlist, Indexer, Query
+from . import Graph, Serializer, Hooks, dirlist, Indexer, Query
 
 try:
     xrange          # Python 2
@@ -27,7 +28,7 @@ def uuidgen():
     return str(uuid.uuid1())
 
 def uuid_to_utc_ts(u):
-    return (uuid.UUID('{%s}' % u).get_time() - 0x01b21dd213814000) // 1e7
+    return (uuid.UUID('{%s}' % u).time - 0x01b21dd213814000) // 1e7
 
 def uuid_to_utc(u):
     return datetime.datetime.utcfromtimestamp(uuid_to_utc_ts(u)).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
@@ -53,13 +54,13 @@ class StatusIndexer(Indexer):
             user_roles = obj['roles']
         except KeyError:
             return
-        for user, roles in user_roles.iteritems():
+        for user, roles in iteritems(user_roles):
             for role in roles:
                 yield '%s\0%s' % (user, role)
 
     def idx_users(self, obj):
         try:
-            return obj['roles'].iterkeys()
+            return iterkeys(obj['roles'])
         except (KeyError, AttributeError):
             return ()
 
@@ -82,7 +83,7 @@ class StatusIndex(object):
                 pass
         for name, crc in newkeys.difference(oldkeys):
             keys = self._index(name)
-            keys.add(crc + uuid)
+            keys.add(crc + uuid.encode())
 
     def _index(self, idx):
         try:
@@ -136,7 +137,7 @@ class Context(object):
                 yield uuid, status
         else:
             try:
-                all = self.statusDB.iteritems()
+                all = iteritems(self.statusDB)
             except KeyError:
                 return
             for uuid, status in all:
@@ -373,7 +374,7 @@ class Collection(object):
     def graph(self, uuid=None, hook=True, ctx=None, user=None, roles=None, **kwargs):
         if uuid is None and kwargs.get('create', False):
             uuid = uuidgen()
-        for k,v in self.graph_opts.iteritems():
+        for k,v in iteritems(self.graph_opts):
             if k not in kwargs:
                 kwargs[k] = v
         if hook:
@@ -404,7 +405,7 @@ class Collection(object):
         except KeyError:
             return frozenset()
         if isinstance(user_roles, dict):
-            user_roles = frozenset(role for role, val in user_roles.iteritems() if val)
+            user_roles = frozenset(role for role, val in iteritems(user_roles) if val)
         else:
             user_roles = frozenset(role for role in self._words.findall(str(user_roles)))
         return user_roles
@@ -430,7 +431,6 @@ class Collection(object):
 
     def daemon(self, poll=250, maxopen=1000):
         poll /= 1000.0
-        wrote = None
         ticker = self.ticker()
         todo = deque()
 

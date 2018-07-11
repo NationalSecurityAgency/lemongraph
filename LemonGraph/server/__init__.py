@@ -1,29 +1,28 @@
 from __future__ import print_function
-from .. import Serializer, Node, Edge, QuerySyntaxError, merge_values
-from ..collection import Collection, uuid_to_utc
-from ..lock import Lock
 
 import atexit
-from collections import deque, defaultdict, namedtuple
+from collections import deque, namedtuple
 import dateutil.parser
 import errno
 import itertools
 from lazy import lazy
 import logging
 import msgpack
-import multiprocessing
 import os
 import pkg_resources
 import re
+from six import iteritems, itervalues
+from six.moves.urllib_parse import parse_qs
 import sys
 import tempfile
 import time
 import traceback
 from uuid import uuid1 as uuidgen
 
-from urlparse import parse_qs
-
-from ..httpd import HTTPMethods, HTTPError, httpd, Graceful, json_encode, json_decode
+from .. import Serializer, Node, Edge, QuerySyntaxError, merge_values
+from ..collection import Collection, uuid_to_utc
+from ..lock import Lock
+from ..httpd import HTTPMethods, HTTPError, httpd, json_encode, json_decode
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
@@ -41,11 +40,11 @@ def date_to_timestamp(s):
 def js_dumps(obj, pretty=False):
     txt = json_encode(obj)
     if pretty:
-        txt += b'\n'
+        txt += '\n'
     return txt
 
 def mp_dumps(obj, pretty=False):
-    return msgpack.packb(obj)
+    return msgpack.packb(obj, raw=True)
 
 Streamer = namedtuple('Streamer', 'mime encode')
 streamJS = Streamer('application/json', js_dumps)
@@ -75,7 +74,7 @@ class SeedTracker(object):
     @property
     def seeds(self):
         try:
-            gen = self._seed.itervalues()
+            gen = itervalues(self._seed)
             next(gen)
         except (KeyError, StopIteration):
             return ()
@@ -84,7 +83,7 @@ class SeedTracker(object):
 class Handler(HTTPMethods):
     content_types = {
         'application/json': json_decode,
-        'application/x-msgpack': lambda x: msgpack.unpackb(x, use_list=False),
+        'application/x-msgpack': lambda x: msgpack.unpackb(x, raw=False, use_list=False),
     }
     multi = ()
     single = ()
@@ -141,7 +140,7 @@ class Handler(HTTPMethods):
 
     def input(self):
         try:
-            encoded = ''.join(self.body)
+            encoded = b''.join(self.body)
             if len(encoded) == 0:
                 return None
             unpacker = self.content_types[self.content_type]
@@ -152,7 +151,7 @@ class Handler(HTTPMethods):
             raise HTTPError(400, 'Decode failed for mime type: %s' % self.content_type)
         except HTTPError:
             raise
-        except Exception as e:
+        except Exception:
             info = sys.exc_info()
             log.error('Unhandled exception: %s', traceback.print_exception(*info))
             raise HTTPError(409, 'Bad data - %s decode failed' % self.content_type)
@@ -235,14 +234,19 @@ def graphtxn(write=False, create=False, excl=False, on_success=None, on_failure=
                     success = False
                     ret = func(self, g, txn, _, uuid, *args, **kwargs)
                     try:
-                        next = getattr(ret, 'next')
-                    except AttributeError:
-                        ret = [ret] if ret is not None else []
+                        first = next(ret)
+                    except TypeError:
+                        first = b'' if ret is None else ret
+                        ret = ()
+                    except StopIteration:
+                        first = b''
+                        ret = ()
                     finally:
                         if write:
                             txn.flush()
                             self.res.headers.set('X-lg-updates', txn.lastID - lastID)
                         self.res.headers.set('X-lg-maxID', txn.lastID)
+                        yield first
                         for x in ret:
                             yield x
                     success = True
@@ -250,7 +254,7 @@ def graphtxn(write=False, create=False, excl=False, on_success=None, on_failure=
                 if write:
                     if 'x-lg-sync' in self.req.headers:
                         g.sync(force=True)
-                    yield ''
+                    yield b''
             except HTTPError:
                 raise
             except (IOError, OSError) as e:
@@ -258,7 +262,7 @@ def graphtxn(write=False, create=False, excl=False, on_success=None, on_failure=
             except Exception as e:
                 info = sys.exc_info()
                 log.error('Unhandled exception: %s', traceback.print_exception(*info))
-                raise
+                raise e
             finally:
                 if success is True:
                     if on_success:
@@ -278,8 +282,6 @@ class _Input(Handler):
         if data is None:
             return
 
-        lastID = txn.lastID
-
         seed = data.get('seed', False)
         if seed:
             SeedTracker(txn).add(data)
@@ -297,7 +299,7 @@ class _Input(Handler):
     def do_meta(self, txn, meta, seed=False, create=False):
         a = txn.nextID
 
-        for key, val in meta.iteritems():
+        for key, val in iteritems(meta):
             txn.set(key, val, merge=True)
 
         b = txn.nextID
@@ -336,7 +338,7 @@ class _Input(Handler):
         except KeyError:
             param = { 'type': node['type'], 'value': node['value'] }
 
-        props = dict( (k, v) for k, v in node.iteritems() if k not in Node_Reserved)
+        props = dict( (k, v) for k, v in iteritems(node) if k not in Node_Reserved)
         if seed:
             props['seed'] = True
         elif not create:
@@ -364,7 +366,7 @@ class _Input(Handler):
             src = self._edge_node(txn, edge, src, seed=seed, create=create, is_src=True)
             tgt = self._edge_node(txn, edge, tgt, seed=seed, create=create, is_src=False)
             param = dict(type=edge['type'], value=edge.get('value', ''), src=src, tgt=tgt)
-        props = dict( (k, v) for k, v in edge.iteritems() if k not in Edge_Reserved)
+        props = dict( (k, v) for k, v in iteritems(edge) if k not in Edge_Reserved)
         if seed:
             props['seed'] = seed
         elif not create:
@@ -418,7 +420,7 @@ class _Streamy(object):
 
     def _dump_json(self, txn, uuid, nodes, edges):
         yield '{"graph":"%s","id":"%s","maxID":%d,"size":%d,"created":"%s","meta":' % (uuid, uuid, txn.lastID, txn.graph.size, uuid_to_utc(uuid))
-        yield self.dumps(dict(txn.iteritems()))
+        yield self.dumps(dict(iteritems(txn)))
         yield ',"nodes":['
         try:
             n = next(nodes)
@@ -485,7 +487,7 @@ class Graph_UUID(_Input, _Streamy):
         with self.lock.exclusive(uuid) as locked:
             # opening the graph checks user/role perms
 #            with self.graph(uuid, readonly=True, create=False, locked=locked) as g:
-            with self.graph(uuid, create=False, locked=locked) as g:
+            with self.graph(uuid, create=False, locked=locked):
                 self.collection.drop(uuid)
 
     def put(self, _, uuid):
@@ -512,7 +514,7 @@ class Graph_UUID(_Input, _Streamy):
                     fh.write(data)
                 cleanup.popleft()() # fh.close()
 #                with self.collection.graph(dbname, readonly=True, hook=False, create=False) as g:
-                with self.collection.graph(dbname, hook=False, create=False) as g:
+                with self.collection.graph(dbname, hook=False, create=False):
                     pass
                 os.rename(path, target)
                 cleanup.pop() # remove os.unlink(path)
@@ -597,7 +599,7 @@ class Graph_UUID(_Input, _Streamy):
         try:
             gen = txn.mquery(uniq, limit=self.limit, start=self.start, stop=self.stop)
         except QuerySyntaxError as e:
-            raise HTTPError(400, str(e))
+            raise HTTPError(400, repr(e))
         # fixme - should we try to make edges use the format_edge foo here?
         gen = ((qtoc[query], tuple(x.as_dict() for x in chain)) for query, chain in gen)
         return self.stream([uniq], gen)
@@ -730,7 +732,7 @@ class Reset_UUID(_Input, Handler):
         except KeyError:
             return
         d = self.kv(dst)
-        for k, v in s.iteritems():
+        for k, v in iteritems(s):
             d[k] = v
 
     def clone_seeds(self, uuid, src, dst, limit):
@@ -799,7 +801,7 @@ class Graph_Exec(_Input, _Streamy):
     def post(self, _, __):
         if self.content_type != 'application/python':
             raise HTTPError(409, 'Bad/missing Content-Type - must be: application/python')
-        code = ''.join(self.body)
+        code = b''.join(self.body)
         gvars = {
             'dumps': self.dumps,
             'stream': self.stream,
@@ -811,7 +813,7 @@ class Graph_Exec(_Input, _Streamy):
         txns_uuids = self._txns_uuids(uuids)
         try:
             lvars = exec_wrapper(code, **gvars)
-            params = dict((k, v) if len(v) > 1 else (k, v[0]) for k, v in self.params.iteritems() if k not in self.eat_params)
+            params = dict((k, v) if len(v) > 1 else (k, v[0]) for k, v in iteritems(self.params) if k not in self.eat_params)
             try:
                 handler = lvars['handler']
             except KeyError:
@@ -838,7 +840,7 @@ class Graph_UUID_Exec(_Input, _Streamy):
     def post(self, g, txn, _, uuid, __):
         if self.content_type != 'application/python':
             raise HTTPError(409, 'Bad/missing Content-Type - must be: application/python')
-        code = ''.join(self.body)
+        code = b''.join(self.body)
         gvars = {
             'dumps': self.dumps,
             'stream': self.stream,
@@ -846,7 +848,7 @@ class Graph_UUID_Exec(_Input, _Streamy):
         }
         try:
             lvars = exec_wrapper(code, **gvars)
-            params = dict((k, v) if len(v) > 1 else (k, v[0]) for k, v in self.params.iteritems())
+            params = dict((k, v) if len(v) > 1 else (k, v[0]) for k, v in iteritems(self.params))
             try:
                 handler = lvars['handler']
             except KeyError:
@@ -862,7 +864,7 @@ class Graph_UUID_Meta(_Input):
 
     @graphtxn(write=False)
     def get(self, g, txn, _, uuid, __):
-        yield self.dumps(dict(txn.iteritems()), pretty=True)
+        yield self.dumps(dict(iteritems(txn)), pretty=True)
 
     @graphtxn(write=True)
     def put(self, g, txn, _, uuid, __):
@@ -915,7 +917,7 @@ class KV_UUID(Handler):
     def get(self, g, txn, _, uuid):
         try:
             kv = self.kv(txn)
-            output = dict(kv.iteritems())
+            output = dict(iteritems(kv))
         except KeyError:
             output = {}
 
@@ -926,7 +928,7 @@ class KV_UUID(Handler):
         data = self.input()
         kv = self.kv(txn)
         try:
-            gen = data.iteritems()
+            gen = iteritems(data)
         except Exception as e:
             raise HTTPError(400, "bad input (%s)" % str(e))
         for k, v in gen:
@@ -937,10 +939,10 @@ class KV_UUID(Handler):
         data = self.input()
         kv = self.kv(txn)
         try:
-            gen = data.iteritems()
+            gen = iteritems(data)
         except Exception as e:
             raise HTTPError(400, "bad input (%s)" % str(e))
-        for k, v in kv.iteritems():
+        for k, v in iteritems(kv):
             if k not in data:
                 del kv[k]
         for k, v in gen:

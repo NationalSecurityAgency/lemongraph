@@ -1,5 +1,6 @@
 from collections import deque, defaultdict
 import itertools
+from six import iteritems, iterkeys
 
 from . import Node, Edge
 from .MatchLGQL import MatchLGQL, MatchCTX, QueryCannotMatch, eval_test
@@ -25,18 +26,20 @@ class Query(object):
 
         try:
             self.compiled = self.cache[('c',) + patterns]
+            return
         except KeyError:
-            compiled = deque()
-            for p_idx, p in enumerate(patterns):
+            pass
+        compiled = deque()
+        for p_idx, p in enumerate(patterns):
+            try:
+                c = self.cache[('p',p)]
+            except KeyError:
                 try:
-                    c = self.cache[('p',p)]
-                except KeyError:
-                    try:
-                        c = self.cache[('p',p)] = MatchLGQL(p, cache=self.cache)
-                    except QueryCannotMatch:
-                        c = self.cache[('p',p)] = None
-                compiled.append(c)
-            self.compiled = self.cache[('c',) + patterns] = tuple(compiled)
+                    c = self.cache[('p',p)] = MatchLGQL(p, cache=self.cache)
+                except QueryCannotMatch:
+                    c = self.cache[('p',p)] = None
+            compiled.append(c)
+        self.compiled = self.cache[('c',) + patterns] = tuple(compiled)
 
 
     def _gen_handlers(self):
@@ -64,7 +67,7 @@ class Query(object):
                 for test in match['tests']:
                     key0 = test[0][0]
                     handled = False
-                    for code, reserved in jump.iteritems():
+                    for code, reserved in iteritems(jump):
                         if key0 in reserved:
                             triggers[code][test].add(toc)
                             handled = True
@@ -73,12 +76,12 @@ class Query(object):
                         triggers[target_type.lower()][key0][test].add(toc)
 
         # squish down to regular dicts and frozensets
-        for code in triggers.iterkeys():
+        for code in iterkeys(triggers):
             if code in 'ne':
-                triggers[code] = dict( (k0, dict( (test, frozenset(tocs)) for test, tocs in d.iteritems() )) for k0, d in triggers[code].iteritems() )
+                triggers[code] = dict( (k0, dict( (test, frozenset(tocs)) for test, tocs in iteritems(d) )) for k0, d in iteritems(triggers[code]) )
             else:
-                triggers[code] = dict( (test, frozenset(tocs)) for test, tocs in triggers[code].iteritems() )
-        triggers = dict( (k, v) for k, v in triggers.iteritems() if v )
+                triggers[code] = dict( (test, frozenset(tocs)) for test, tocs in iteritems(triggers[code]) )
+        triggers = dict( (k, v) for k, v in iteritems(triggers) if v )
 
         edge_funcs = deque()
         if 'E' in triggers:
@@ -180,7 +183,7 @@ class Query(object):
                 ctxs = ctxs_by_len[len(chain)]
             except KeyError:
                 continue
-            for p, ctx in ctxs.iteritems():
+            for p, ctx in iteritems(ctxs):
                 valid = True
                 for target, idx in zip(chain, ctx.match.keep):
                     if not ctx.match.is_valid(target, idx=idx, skip_fudged=True):
@@ -221,7 +224,7 @@ class Query(object):
         return self._exec_limit(pat_matches, limit) if limit else self._exec(pat_matches)
 
     def _scan_static(self, trigs, entry, seen):
-        for test, tocs in trigs.iteritems():
+        for test, tocs in iteritems(trigs):
             if eval_test(entry, test):
                 unseen = tocs - seen
                 if unseen:
@@ -229,7 +232,7 @@ class Query(object):
                     yield (entry, unseen)
 
     def _scan_mutable(self, trigs, entry, seen, beforeID):
-        for test, tocs in trigs.iteritems():
+        for test, tocs in iteritems(trigs):
             if eval_test(entry, test) and not eval_test(entry.clone(beforeID=beforeID), test):
                 unseen = tocs - seen
                 if unseen:
@@ -241,6 +244,6 @@ class Query(object):
             triggers = trigs[entry.key]
         except KeyError:
             return
-        for test, tocs in triggers.iteritems():
+        for test, tocs in iteritems(triggers):
             if eval_test(entry.parent, test) and not eval_test(entry.parent.clone(beforeID=entry.ID), test):
                 yield (entry.parent, tocs)

@@ -1,10 +1,10 @@
 from __future__ import print_function
 from . import Graph, Serializer, QuerySyntaxError
 
-import msgpack
 import os
 import re
 import readline
+from six import iteritems
 import sys
 import time
 
@@ -65,7 +65,7 @@ def do_query(txn, query, start=0, stop=0, interactive=False):
             mode = 'dump'
             total = None
         elif 'g' == query:
-            print(dict( (k, v) for k,v in txn.iteritems() ))
+            print(dict( (k, v) for k,v in iteritems(txn) ))
             mode = 'graph properties'
             total = None
         elif len(queries) > 1:

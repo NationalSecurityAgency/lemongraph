@@ -1,6 +1,7 @@
 import msgpack
 from zlib import crc32
 from struct import pack
+from six import iteritems
 
 class Indexer(object):
     def __init__(self):
@@ -19,7 +20,7 @@ class Indexer(object):
     def index(self, obj):
         keys = set()
         if obj is not None:
-            for name, method in self._idx.iteritems():
+            for name, method in iteritems(self._idx):
                 for value in method(obj):
                     try:
                         key = self.key(name, value)

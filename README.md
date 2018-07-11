@@ -17,11 +17,21 @@ The core of the graph library is written in C, and the Python (2.x) layer adds [
 
 Using PyPy 6.0 and stock CentOS 7 Python 2.7.5, under a single transaction (3.4ghz i7-4770, plenty of RAM):
 
-| Operation                    | Total Storage | Time (PyPy) | Rate (PyPy)   | Time (Python) | Rate (Python) |
-| ---------------------------- | ------------- | ----------- | ------------- | ------------- | ------------- |
-| insert 1 million nodes       | 108 mb        | 3.5s        | 287k nodes/s  | 13.7s         | 73k edges/s   |
-| add a property on each node  | 157 mb        | 2.2s        | 456k props/s  | 5.2s          | 192k edges/s  |
-| add 1 million random edges   | 293 mb        | 6.0s        | 166k edges/s  | 15.0s         | 66k edges/s   |
+| Test  | Description                 | Disk usage |
+| ----- | --------------------------- | ---------- |
+| T1    | insert 1 million nodes      | 108mb      |
+| T2    | add a property on each node | 157mb      |
+| T3    | add 1 million random edges  | 292mb      |
+
+| Test         | T1 (time) | T2 (time) | T3 (time) | T1 (rate) | T2 (rate) | T3 (rate) |
+| ------------ | --------- | --------- | --------- | --------- | --------- | --------- |
+| Python 2.6.9 | 23.915s   | 8.622s    | 16.787s   | 41.8k/s   | 116.0k/s  | 59.6k/s   |
+| Python 2.7.5 | 17.238s   | 5.443s    | 18.164s   | 58.0k/s   | 183.7k/s  | 55.1k/s   |
+| Python 3.5.5 | 12.159s   | 5.322s    | 15.434s   | 82.2k/s   | 187.9k/s  | 64.8k/s   |
+| Python 3.7.0 | 11.740s   | 5.119s    | 15.235s   | 85.2k/s   | 195.4k/s  | 65.6k/s   |
+| PyPy2 6.0    | 3.730s    | 2.145s    | 6.863s    | 268.1k/s  | 466.1k/s  | 145.7k/s  |
+| PyPy3.5 6.0  | 5.117s    | 2.294s    | 8.815s    | 195.4k/s  | 435.8k/s  | 113.4k/s  |
+
 
 # Features
 
@@ -56,6 +66,8 @@ The Python wrapper provides a friendly interface:
 
 Note that the REST service cannot run on CentOS 6's Python 2.6, as we rely on the new `memoryview` magic.
 
+Python 3 should work now though - replace `python`/`pypy`/`easy_install` and package names with appropriate Python 3 variants.
+
 * CPython on CentOS 6/7:
 	* `yum install -y gcc gcc-c++ make libffi-devel zlib-devel python-devel python-setuptools`
 	* `easy_install 'cffi>=1.0'`
@@ -68,13 +80,13 @@ Note that the REST service cannot run on CentOS 6's Python 2.6, as we rely on th
 	* `pypy -mensurepip`
 
 ## LemonGraph installation
-* `python setup.py install` (or you know, pypy)
+* `python setup.py install` (or you know, `pypy`)
 
 Or to run without proper installation, you must manually install dependencies:
 * CPython:
-	* `easy_install lazy pysigset msgpack-python python-dateutil ujson`
+	* `easy_install lazy msgpack pysigset python-dateutil six ujson`
 * Pypy:
-	* `easy_install lazy pysigset msgpack-python python-dateutil`
+	* `easy_install lazy msgpack pysigset python-dateutil six`
 
 # Python Example
 ```python

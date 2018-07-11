@@ -1,5 +1,6 @@
 from __future__ import print_function
 import re
+from six import iteritems
 import sys
 import itertools
 
@@ -9,30 +10,30 @@ SQ = '(?:\'(?:[^\'\\\\]|\\\\[\'\"\\\\])*\')'
 DQ = '(?:\"(?:[^\"\\\\]|\\\\[\'\"\\\\])*\")'
 BW = '(?:(?:(?![0-9])\w)\w*)'
 
-STR = re.compile('(?:%s|%s)' % (DQ, SQ))
-WHITE = re.compile(r'\s+')
-KEY = re.compile(r'(?:%s|%s|%s)' % (BW, SQ, DQ), re.IGNORECASE)
-DOT = re.compile(r'(?:\.)')
-NULL = re.compile(r'(?:None|null)', re.IGNORECASE)
-TRUE = re.compile(r'(?:true)', re.IGNORECASE)
-FALSE = re.compile(r'(?:false)', re.IGNORECASE)
-TYPES = re.compile(r'(?:boolean|string|number|array|object)')
-OCT = re.compile(r'(?:-?0[0-7]+)')
-HEX = re.compile(r'(?:-?0x[0-9a-f]+)', re.IGNORECASE)
-NUM = re.compile(r'(?:[0-9.e+-]+)', re.IGNORECASE)
-#REGEX = re.compile(r'(?:/((?:[^\/]|\\.)*)/([ilmsxu]*))')
-REGEX = re.compile(r'(?:/((?:[^/]|\\.)*)/([imsx]*))')
-LIST_BEGIN = re.compile(r'\[')
-LIST_END = re.compile(r'\]')
-COMMA = re.compile(r',[\s,]*')
-OBJ_BEGIN = re.compile(r'([@]*)\b([NE])(?::(%s(?:,%s)*?))?\(' % (BW, BW), re.IGNORECASE)
-OBJ_END = re.compile(r'\)')
-LINK_UNIQ = re.compile(r'(?:<?->?)')
-CLEANER = re.compile(r'\\(.)')
-END = re.compile(r'$')
-OP = re.compile(r'(?:[<>]=?|!?[=~:])')
+STR = re.compile('(?:%s|%s)' % (DQ, SQ), re.UNICODE)
+WHITE = re.compile(r'\s+', re.UNICODE)
+KEY = re.compile(r'(?:%s|%s|%s)' % (BW, SQ, DQ), re.IGNORECASE|re.UNICODE)
+DOT = re.compile(r'(?:\.)', re.UNICODE)
+NULL = re.compile(r'(?:None|null)', re.IGNORECASE|re.UNICODE)
+TRUE = re.compile(r'(?:true)', re.IGNORECASE|re.UNICODE)
+FALSE = re.compile(r'(?:false)', re.IGNORECASE|re.UNICODE)
+TYPES = re.compile(r'(?:boolean|string|number|array|object)', re.UNICODE)
+OCT = re.compile(r'(?:-?0[0-7]+)', re.UNICODE)
+HEX = re.compile(r'(?:-?0x[0-9a-f]+)', re.IGNORECASE|re.UNICODE)
+NUM = re.compile(r'(?:[0-9.e+-]+)', re.IGNORECASE|re.UNICODE)
+#REGEX = re.compile(r'(?:/((?:[^\/]|\\.)*)/([ilmsxu]*))', re.UNICODE)
+REGEX = re.compile(r'(?:/((?:[^/]|\\.)*)/([imsx]*))', re.UNICODE)
+LIST_BEGIN = re.compile(r'\[', re.UNICODE)
+LIST_END = re.compile(r'\]', re.UNICODE)
+COMMA = re.compile(r',[\s,]*', re.UNICODE)
+OBJ_BEGIN = re.compile(r'([@]*)\b([NE])(?::(%s(?:,%s)*?))?\(' % (BW, BW), re.IGNORECASE|re.UNICODE)
+OBJ_END = re.compile(r'\)', re.UNICODE)
+LINK_UNIQ = re.compile(r'(?:<?->?)', re.UNICODE)
+CLEANER = re.compile(r'\\(.)', re.UNICODE)
+END = re.compile(r'$', re.UNICODE)
+OP = re.compile(r'(?:[<>]=?|!?[=~:])', re.UNICODE)
 # aliases are positive integers or barewords
-ALIAS = re.compile(r'((?:[1-9][0-9]*)|%s)\(' % BW)
+ALIAS = re.compile(r'((?:[1-9][0-9]*)|%s)\(' % BW, re.UNICODE)
 
 RANGE = (STR, OCT, NUM, HEX)
 OP_NEXT_BEGIN = {
@@ -141,7 +142,7 @@ def _clean_num(m, val, _):
     return val
 
 def _clean_regex(m, val, cache):
-    flags = 0
+    flags = re.UNICODE
     for f in m.group(2):
         flags |= RE_FLAGS[f]
     try:
@@ -487,7 +488,7 @@ class MatchLGQL(object):
         tests_by_type = defaultdict(deque)
         tests_by_type['ranges'] = ranges
         tests_by_type['exists'] = deque((key, 'exists', ()) for key in exists)
-        for key_op, vals in d.iteritems():
+        for key_op, vals in iteritems(d):
             tests_by_type[key_op[1]].append(tuple(key_op) + (tuple(vals),))
 
         tests_new = deque()
@@ -574,7 +575,7 @@ class MatchLGQL(object):
     def dump(self, fh=sys.stdout):
         print('[', file=fh)
         for p in self.matches:
-            pre = dict( (key, val) for key, val in p.iteritems() if key != 'tests' )
+            pre = dict( (key, val) for key, val in iteritems(p) if key != 'tests' )
             if p['tests']:
                 print('\t%s:[' % pre, file=fh)
                 for test in p['tests']:

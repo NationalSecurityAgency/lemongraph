@@ -1,4 +1,4 @@
-from . import lib, ffi
+from . import lib, ffi, wire, listify_py2
 from .serializer import Serializer
 
 class KV(object):
@@ -26,7 +26,7 @@ class KV(object):
         data = lib.kv_get(self._kv, key, len(key), self._dlen)
         if data == ffi.NULL:
             raise KeyError(key)
-        return self.serialize_value.decode(ffi.buffer(data, self._dlen[0]))
+        return self.serialize_value.decode(ffi.buffer(data, self._dlen[0])[:])
 
     def __setitem__(self, key, value):
         key = self.serialize_key.encode(key)
@@ -67,14 +67,9 @@ class KV(object):
     def iteritems(self, pfx=None):
         return KVIterator(self, lambda obj: (obj.key, obj.value), pfx=pfx)
 
-    def keys(self, pfx=None):
-        return [self.iterkeys(pfx=pfx)]
-
-    def values(self, pfx=None):
-        return [self.itervalues(pfx=pfx)]
-
-    def items(self, pfx=None):
-        return [self.iteritems(pfx=pfx)]
+    keys = listify_py2(iterkeys)
+    items = listify_py2(iteritems)
+    values = listify_py2(itervalues)
 
     def __iter__(self):
         return self.iterkeys()
@@ -106,14 +101,14 @@ class KVIterator(object):
             pfx = ffi.NULL
             pfxlen = 0
         else:
-            pfx = str(pfx)
+            pfx = wire.encode(pfx)
             pfxlen = len(pfx)
         self._iter = lib.kv_iter_pfx(kv._kv, pfx, pfxlen)
 
     def __iter__(self):
         return self
 
-    def next(self):
+    def __next__(self):
         if not lib.kv_iter_next(self._iter, self._key, self._klen, self._data, self._dlen):
             lib.kv_iter_close(self._iter)
             self._iter = None
@@ -122,13 +117,15 @@ class KVIterator(object):
 
     @property
     def key(self):
-        return self.serialize_key.decode(ffi.buffer(self._key[0], self._klen[0]))
+        return self.serialize_key.decode(ffi.buffer(self._key[0], self._klen[0])[:])
 
     @property
     def value(self):
-        return self.serialize_value.decode(ffi.buffer(self._data[0], self._dlen[0]))
+        return self.serialize_value.decode(ffi.buffer(self._data[0], self._dlen[0])[:])
 
     def __del__(self):
         if self._iter is not None:
             lib.kv_iter_close(self._iter)
             self._iter = None
+
+    next = __next__

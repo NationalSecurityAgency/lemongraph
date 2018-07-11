@@ -6,14 +6,14 @@ import os
 import re
 import signal
 import socket
+from six import itervalues
+from six.moves.urllib_parse import urlsplit
 import sys
 import time
 import traceback
-import types
-import urlparse
 import zlib
 
-from . import lib
+from . import lib, wire
 
 try:
     import ujson
@@ -24,7 +24,7 @@ except ImportError:
     import json
     def json_encode(x):
         return json.dumps(x, separators=(',', ':'), ensure_ascii=False)
-    json_decode = json.loads
+    json_decode = lambda x: json.loads(wire.decode(x))
 
 # pypi
 from lazy import lazy
@@ -44,6 +44,8 @@ def _generator():
 
 generator = type(_generator())
 iterator = type(iter(''))
+string_bin = type(b'')
+string_uni = type(u'')
 
 class Disconnected(Exception):
     def __init__(self, why, level='warn'):
@@ -83,24 +85,31 @@ class HTTPMethods(object):
     all_methods = ('CONNECT', 'DELETE', 'GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'TRACE')
 
     @lazy
-    def methods(self):
-        supported = []
-        for m in (m.lower() for m in self.all_methods):
+    def _methods(self):
+        methods = {}
+        for m in self.all_methods:
+            lm = m.lower()
             try:
-                f = getattr(self, m)
-                supported.append(m)
+                h = getattr(self, lm)
+                methods[m] = methods[lm] = methods[m.encode()] = h
             except AttributeError:
                 pass
-        return frozenset(supported)
+        return methods
+
+    @lazy
+    def methods(self):
+        return frozenset(m.lower() for m in self.all_methods if m in self._methods)
 
     @lazy
     def allowed(self):
-        return ', '.join(tuple(sorted(self.methods))).upper()
+        return ', '.join(sorted(self.methods))
 
     def method(self, m):
-       if m.lower() not in self.methods:
-           raise AttributeError('Unsupported http method for object: %s' % m)
-       return getattr(self, m.lower())
+        try:
+            handler = self._methods[m]
+        except KeyError:
+            raise AttributeError('Unsupported http method for object: %s' % repr(m))
+        return handler
 
 
 class Chunk(object):
@@ -137,25 +146,19 @@ class Chunk(object):
 
     def _wrap(self, size):
         # update header
-        header ='%x\r\n' % size
+        header = wire.encode('%x\r\n' % size)
         hlen = len(header)
         self.hoffset = self.hlen - hlen
         self.header[self.hoffset : self.hoffset + hlen] = header
 
         # add footer
-        self.payload_plus[size:size+2] = '\r\n'
+        self.payload_plus[size:size+2] = b'\r\n'
         if size == self.bs:
             return self.mem
         return self.mem[self.hoffset : self.hoffset + self.size + hlen + 2]
 
 
 class Chunks(object):
-    _handlers = {
-            type(b''):  lambda data: data,
-            type(u''):  lambda data: data.encode("UTF-8"),
-            type(None): lambda data: b'',
-        }
-
     def __init__(self, bs=1048576):
         # clamp output buffer size to be between 1k and 10m
         self.bs = bs = sorted((1024, int(bs), 10485760))[1]
@@ -177,7 +180,7 @@ class Chunks(object):
 
         pos = 0
         for src in gen:
-            src = self._memview(src)
+            src = wire.encode(src)
             slen = len(src)
             try:
                 # fast append
@@ -205,19 +208,6 @@ class Chunks(object):
 
         if pos:
             yield chunk(pos)
-
-    def _memview(self, data):
-        try:
-            handler = self._handlers[type(data)]
-        except KeyError:
-            handler = None
-            for t in self._handlers:
-                if isinstance(data, t):
-                    handler = self._handlers[type(data)] = self._handlers[t]
-                    break
-            if handler is None:
-                raise TypeError
-        return memoryview(handler(data))
 
 # because every multiprocessing.Process().start() very helpfully
 # does a waitpid(WNOHANG) across all known children, and I want
@@ -274,8 +264,8 @@ class Service(object):
             return wrapper
 
         self.extra_procs = None
-        if extra_procs is not None:
-            self.extra_procs = dict((label, ep_wrapper(target)) for label, target in extra_procs.iteritems())
+        if extra_procs:
+            self.extra_procs = dict((label, ep_wrapper(target)) for label, target in extra_procs.items())
 
         self.handlers = handlers or ()
         self.root = Step()
@@ -316,7 +306,7 @@ class Service(object):
                 spawn("worker", self.worker)
 
             if self.extra_procs is not None:
-                for label, target in self.extra_procs.iteritems():
+                for label, target in self.extra_procs.items():
                     spawn(label, target)
 
             while True:
@@ -330,9 +320,9 @@ class Service(object):
                     spawn(label, target)
                     time.sleep(0.1)
 
-        except Graceful as e:
+        except Graceful:
             log.info("Waiting for subprocesses to finish: %s", sorted(procs.keys()))
-            for proc, label, target in procs.itervalues():
+            for proc, label, target in procs.values():
                 try:
                     proc.terminate()
                 except OSError:
@@ -354,7 +344,6 @@ class Service(object):
         try:
             signal.signal(signal.SIGHUP, signal.SIG_IGN)
             signal.signal(signal.SIGINT, signal.SIG_IGN)
-            pid = os.getpid()
 
             while self.maxreqs:
                 with suspended_signals(signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
@@ -418,7 +407,7 @@ class Service(object):
             for p in req.components:
                 cursor = cursor.child(p)
         except KeyError:
-            raise HTTPError(400, "Invalid endpoint: " + str(req.path))
+            raise HTTPError(400, "Invalid endpoint: " + str(req.path) + " " + repr(req.components))
         try:
             h, handler = cursor.method(req.method)
         except AttributeError:
@@ -431,57 +420,36 @@ class Service(object):
         try:
             h.init(req, res)
             body = handler(*req.components)
+            self.handle(body, req, res)
         except Exception as e:
-            if isinstance(body, generator):
-                body.close()
             if isinstance(e, HTTPError):
                 raise
             info = sys.exc_info()
             log.error('Unhandled exception: %s', traceback.print_exception(*info))
             raise HTTPError(500, "Unhandled exception in handler: %s" % repr(e))
 
-        try:
-            body_handler = self.jump[type(body)]
-        except KeyError:
-            # handle & cache subclassed items
-            body_handler = None
-            for t, bh in self.jump.iteritems():
-                if isinstance(body, t):
-                    self.jump[body.__class__] = body_handler = bh
-                    break
+    def handle(self, body, req, res):
         self.req = req
         self.res = res
-        try:
-            body_handler(body)
-        except:
-            if isinstance(body, generator):
-                body.close()
-            raise
-
-    @lazy
-    def jump(self):
-        return {
-            type(b''):  self._fixed,
-            type(u''):  self._unicode,
-            type(None): self._none,
-            generator:  self._chunked,
-            iterator:   self._chunked,
-            list:       self._chunked,
-            tuple:      self._chunked,
-            deque:      self._chunked,
-        }
+        if isinstance(body, string_bin):
+            return self._fixed(body)
+        if isinstance(body, string_uni):
+            return self._fixed(body.encode('UTF-8'))
+        if isinstance(body, (generator, iterator, list, tuple, deque)):
+            try:
+                return self._chunked(body)
+            finally:
+                if isinstance(body, generator):
+                    body.close()
+        if body is None:
+            return self._fixed(b'')
+        raise TypeError('Unknown body object type: %s' % repr(type(body)))
 
     def _fixed(self, body):
         clen = len(body)
         self.res.headers.set('Content-Length', clen)
         self.res.begin(default=200 if clen else 204)
         self.res.send(body)
-
-    def _unicode(self, body):
-        self._fixed(body.encode('UTF-8'))
-
-    def _none(self, body):
-        self._fixed(b'')
 
     def _chunked(self, body):
         chunks = self.chunks.chunkify(body)
@@ -499,6 +467,7 @@ class Service(object):
             return self._fixed(first.body)
         # no chunks - send empty response
         return self._fixed(b'')
+
 
 class Response(object):
     codes = {
@@ -563,8 +532,10 @@ class Response(object):
     def send(self, *data):
         try:
             for d in data:
-                self.sock.send(d)
+                self.sock.send(wire.encode(d))
         except Exception as e:
+            info = sys.exc_info()
+            log.error('Unhandled exception: %s', traceback.print_exception(*info))
             raise Disconnected(str(e))
 
     @property
@@ -586,7 +557,7 @@ class Request(object):
 
     def __init__(self, sock, timeout=10):
         self.sock = sock
-        self.fh = sock.makefile()
+        self.fh = sock.makefile('b')
         self.headers = Headers()
         self.timeout = timeout
         self.method = None
@@ -632,7 +603,7 @@ class Request(object):
     def _load_request_headers(self):
         deadline = time.time() + self.timeout
         self.sock.settimeout(self.timeout)
-        line = self.fh.readline()
+        line = wire.decode(self.fh.readline())
         if len(line) == 0:
             raise Disconnected('no request', level='debug')
 
@@ -643,7 +614,7 @@ class Request(object):
             raise Disconnected('bad request: ' + line)
         self.uri = m.group(2)
         self.version = m.group(3) or 'HTTP/1.0'
-        parts = urlparse.urlsplit(self.uri)
+        parts = urlsplit(self.uri)
         self.path = parts.path
         self.components = tuple(x for x in self.path.split('/') if x)
         self.query = parts.query
@@ -655,7 +626,7 @@ class Request(object):
             if now >= deadline:
                 raise socket.timeout()
             self.sock.settimeout(deadline - now)
-            line = self.fh.readline()
+            line = wire.decode(self.fh.readline())
             if len(line) < 2 or '\r\n' != line[-2:]:
                 raise Disconnected('bad header line: ' + line)
             elif len(line) == 2:
@@ -671,7 +642,7 @@ class Request(object):
     def _body_chunked(self):
         while True:
             h = self.fh.readline()
-            if len(h) < 3 or h[-2:] != '\r\n':
+            if len(h) < 3 or h[-2:] != b'\r\n':
                 raise Disconnected('bad chunk header')
             chunklen = int(h.rstrip(), base=16) + 2
             chunk = self.fh.read(chunklen)
@@ -740,7 +711,7 @@ class Headers(object):
         self.data = {}
 
     def __str__(self):
-        lines = ['%s: %s' % (h.label, str(h)) for h in self.data.itervalues()]
+        lines = ['%s: %s' % (h.label, str(h)) for h in itervalues(self.data)]
         lines.extend(('', ''))
         return '\r\n'.join(lines)
 

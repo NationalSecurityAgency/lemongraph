@@ -1,20 +1,42 @@
-from . import ffi, lib
+from . import ffi, lib, wire
 import msgpack as messagepack
 import collections
+import sys
 
 try:
     xrange          # Python 2
 except NameError:
     xrange = range  # Python 3
 
+# Python 2.6 is generally angry about newer msgpack
+# This is enough enough of a hack to make tests pass
+try:
+    memoryview
+except NameError:
+    import struct
 
-def msgpack_encode_hashable(x):
-    if not isinstance(x, collections.Hashable):
-        raise ValueError(x)
-    return messagepack.packb(x)
+    # bolt itemsize onto the string class to let
+    # it look enough like memoryview for msgpack
+    class memoryview_ish(str):
+        itemsize = 1
+    # and install it into msgpack's namespace
+    messagepack.fallback.memoryview = memoryview_ish
 
-def msgpack_decode_hashable(x):
-    return messagepack.unpackb(x, use_list=False)
+    # in addition, looks like struct.unpack_from
+    # gets angry when you feed it bytearrays, so
+    # monkey patch that too
+    def wrap_unpack_from():
+        func = struct.unpack_from
+        def unpack_from_wrapper(*args, **kwargs):
+            if isinstance(args[1], bytearray):
+                args = list(args)
+                args[1] = str(args[1])
+            return func(*args, **kwargs)
+        return unpack_from_wrapper
+    struct.unpack_from = wrap_unpack_from()
+
+    # probably the right thing to do is to stop supporting 2.6...
+
 
 # encode should support: arbitrary python object => bytes
 # decode should support: python Buffer => object
@@ -25,19 +47,39 @@ def msgpack_decode_hashable(x):
 
 class Serializer(object):
     @staticmethod
-    def default(x):
+    def str_encode(x):
+        if x is None:
+            return b''
         try:
-            return '' if x is None else str(x)
-        except UnicodeEncodeError:
-            return x.encode('UTF-8')
+            return wire.encode(x)
+        except TypeError:
+            return wire.encode(str(x))
+
+    str_decode = staticmethod(wire.decode)
 
     def __init__(self, encode=None, decode=None):
-        self.encode = encode or self.default
-        self.decode = decode or self.default
+        self.encode = encode or self.str_encode
+        self.decode = decode or self.str_decode
 
     @staticmethod
     def msgpack(hashable=False):
-        return Serializer(encode=msgpack_encode_hashable, decode=msgpack_decode_hashable) if hashable else Serializer(encode=messagepack.packb, decode=messagepack.unpackb)
+        if hashable:
+            def encode(x):
+                if not isinstance(x, collections.Hashable):
+                    raise ValueError(x)
+                return messagepack.packb(x)
+
+            def decode(x):
+                return messagepack.unpackb(x, raw=False, use_list=False)
+
+        else:
+            def encode(x):
+                return messagepack.packb(x)
+
+            def decode(x):
+                return messagepack.unpackb(x, raw=False)
+
+        return Serializer(encode=encode, decode=decode)
 
     @staticmethod
     def uint():
@@ -50,10 +92,10 @@ class Serializer(object):
                 ret = buffers[size]
             except KeyError:
                 ret = buffers[size] = ffi.buffer(buffer, size)
-            return str(ret)
+            return ret[:]
 
         def decode(b):
-            return int(lib.unpack_uint(str(b)))
+            return int(lib.unpack_uint(b[:]))
 
         return Serializer(encode=encode, decode=decode)
 
@@ -76,10 +118,10 @@ class Serializer(object):
                 ret = buffers[size]
             except KeyError:
                 ret = buffers[size] = ffi.buffer(buffer, size)
-            return str(ret)
+            return ret[:]
 
         def decode(b):
-            lib.unpack_uints(count, decoded, str(b))
+            lib.unpack_uints(count, decoded, b[:])
             return decode_type(int(decoded[i]) for i in xrange(0, count))
 
         return Serializer(encode=encode, decode=decode)
@@ -94,7 +136,7 @@ class Serializer(object):
         def encode(n):
             if len(n) != count:
                 raise ValueError(n)
-            string = str(n[-1])
+            string = wire.encode(n[-1])
             n = list(n[0:-1])
             strlen = len(string)
             n.append(strlen)
@@ -105,14 +147,13 @@ class Serializer(object):
 
             buffer[size:size+strlen] = string
             size += strlen
-            return str(ffi.buffer(buffer, size))
+            return ffi.buffer(buffer, size)[:]
 
         def decode(b):
-            size = lib.unpack_uints(count, decoded, str(b))
-            strlen = decoded[count-1]
+            size = lib.unpack_uints(count, decoded, b[:])
             buf = ffi.buffer(buffer, size + decoded[count-1])
             ret = list(int(decoded[i]) for i in xrange(0, count-1))
-            ret.append(str(buf[size:]))
+            ret.append(wire.decode(buf[size:]))
             return decode_type(ret)
 
         return Serializer(encode=encode, decode=decode)

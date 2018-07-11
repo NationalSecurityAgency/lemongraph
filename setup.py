@@ -90,7 +90,14 @@ def fetch_external():
     fetch_js()
 
 
-reqs = ['cffi>=1.0.1,<1.11', 'lazy>=1.0,<1.4', 'msgpack-python>=0.2.0,<0.5', 'pysigset>=0.2,<0.4', 'python-dateutil>=1.4,<2.7']
+reqs = [
+    'cffi>=1.0.1,<1.12',
+    'lazy>=1.0,<1.4',
+    'msgpack>=0.5.2,<0.6',
+    'pysigset>=0.2,<0.4',
+    'python-dateutil>=1.4,<2.7',
+    'six',
+]
 if platform.python_implementation() == 'CPython':
     reqs.append('ujson')
 
@@ -101,7 +108,7 @@ if __name__ == "__main__":
         maintainer='National Security Agency',
         maintainer_email='/dev/null',
         url='https://github.com/NationalSecurityAgency/lemongraph',
-        version='0.9.0',
+        version='0.10.0',
         description='LemonGraph Database',
         packages=['LemonGraph'],
         package_data={'LemonGraph': ['data/*']},

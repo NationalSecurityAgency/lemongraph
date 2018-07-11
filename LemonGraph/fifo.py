@@ -30,7 +30,7 @@ class Fifo(object):
             if key == ffi.NULL:
                 self._idx = -1
             else:
-                self._idx = self.serialize_key.decode(ffi.buffer(key, self._dlen[0]))
+                self._idx = self.serialize_key.decode(ffi.buffer(key, self._dlen[0])[:])
         for d in data:
             self._idx += 1
             try:
@@ -94,7 +94,7 @@ class Fifo(object):
         last = lib.kv_last_key(self._kv, self._dlen)
         if last == ffi.NULL:
             return 0
-        last = self.serialize_key.decode(ffi.buffer(last, self._dlen[0]))
+        last = self.serialize_key.decode(ffi.buffer(last, self._dlen[0])[:])
         for idx, _ in KVIterator(self):
             return 1+last-idx
         raise Exception
@@ -117,7 +117,7 @@ class KVIterator(object):
     def __iter__(self):
         return self
 
-    def next(self):
+    def __next__(self):
         if not lib.kv_iter_next(self._iter, self._key, self._klen, self._data, self._dlen):
             lib.kv_iter_close(self._iter)
             self._iter = None
@@ -126,13 +126,15 @@ class KVIterator(object):
 
     @property
     def key(self):
-        return self.serialize_key.decode(ffi.buffer(self._key[0], self._klen[0]))
+        return self.serialize_key.decode(ffi.buffer(self._key[0], self._klen[0])[:])
 
     @property
     def value(self):
-        return self.serialize_value.decode(ffi.buffer(self._data[0], self._dlen[0]))
+        return self.serialize_value.decode(ffi.buffer(self._data[0], self._dlen[0])[:])
 
     def __del__(self):
         if self._iter is not None:
             lib.kv_iter_close(self._iter)
             self._iter = None
+
+    next = __next__

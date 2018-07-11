@@ -43,7 +43,7 @@ class TestGraph(unittest.TestCase):
     def test_commit(self):
         with self.g.transaction(write=True) as txn:
             self.assertEqual(txn.nextID, 1)
-            n = txn.node(type='foo', value='bar')
+            txn.node(type='foo', value='bar')
             self.assertEqual(txn.nextID, 2)
             txn.commit()
             # should never reach this
@@ -55,7 +55,7 @@ class TestGraph(unittest.TestCase):
     def test_abort(self):
         with self.g.transaction(write=True) as txn:
             self.assertEqual(txn.nextID, 1)
-            n = txn.node(type='foo', value='bar')
+            txn.node(type='foo', value='bar')
             self.assertEqual(txn.nextID, 2)
             txn.abort()
             # should never reach this
@@ -83,12 +83,12 @@ class TestGraph(unittest.TestCase):
 
             self.assertEqual(txn.nodes_count(beforeID=n2.ID), 1)
 
-            e1 = txn.edge(src=n1, tgt=n2, type="foo")
+            txn.edge(src=n1, tgt=n2, type="foo")
             self.assertEqual(txn.edges_count(), 1)
 
         with self.g.transaction(write=True) as txn:
             self.assertEqual(txn.nodes_count(beforeID=n2.ID), 1)
-            n3 = txn.node(type="foo", value="blah")
+            txn.node(type="foo", value="blah")
             self.assertEqual(txn.nodes_count(), 3)
             n1 = txn.node(type="foo", value="bar")
             n1.delete()
@@ -222,6 +222,7 @@ class TestGraph(unittest.TestCase):
         with self.g.transaction(write=False) as txn:
             self.assertEqual(1, txn.nextID)
 
+
 class TestAlgorithms(unittest.TestCase):
     serializer = Serializer.msgpack()
     # each test_foo() method is wrapped w/ setup/teardown around it, so each test has a fresh graph
@@ -313,7 +314,7 @@ class TestSerializers(unittest.TestCase):
     def test_default(self):
         s = Serializer()
         a = (None, 'foo', 1)
-        b = ('', 'foo', '1')
+        b = (b'', b'foo', b'1')
         c = ('', 'foo', '1')
         for x, y, z in zip(a, b, c):
             self.assertEqual(s.encode(x), y)
@@ -322,8 +323,8 @@ class TestSerializers(unittest.TestCase):
     def test_uint(self):
         s = Serializer.uint()
         a = (0, 255, 256, (1 << 64) - 1)
-        b = ("\x00", "\x01\xff",
-             "\x02\x01\x00", "\x08\xff\xff\xff\xff\xff\xff\xff\xff")
+        b = (b"\x00", b"\x01\xff",
+             b"\x02\x01\x00", b"\x08\xff\xff\xff\xff\xff\xff\xff\xff")
         c = (0, 255, 256, (1 << 64) - 1)
         for x, y, z in zip(a, b, c):
             self.assertEqual(s.encode(x), y)
@@ -332,8 +333,8 @@ class TestSerializers(unittest.TestCase):
     def test_uints(self):
         s = Serializer.uints(2)
         a = ((0, 255), (256, (1 << 64) - 1))
-        b = ("\x00\x01\xff",
-             "\x02\x01\x00\x08\xff\xff\xff\xff\xff\xff\xff\xff")
+        b = (b"\x00\x01\xff",
+             b"\x02\x01\x00\x08\xff\xff\xff\xff\xff\xff\xff\xff")
         c = ((0, 255), (256, (1 << 64) - 1))
         for x, y, z in zip(a, b, c):
             self.assertEqual(s.encode(x), y)
@@ -342,13 +343,19 @@ class TestSerializers(unittest.TestCase):
     def test_uints_string(self):
         s = Serializer.uints(3, string=True)
         a = ((0, 255, "foo"), (256, (1 << 64) - 1, ""))
-        b = ("\x00\x01\xff\x01\x03foo",
-             "\x02\x01\x00\x08\xff\xff\xff\xff\xff\xff\xff\xff\x00")
+        b = (b"\x00\x01\xff\x01\x03foo",
+             b"\x02\x01\x00\x08\xff\xff\xff\xff\xff\xff\xff\xff\x00")
         c = ((0, 255, "foo"), (256, (1 << 64) - 1, ""))
         for x, y, z in zip(a, b, c):
             self.assertEqual(s.encode(x), y)
             self.assertEqual(s.decode(y), z)
 
+    def test_msgpack(self):
+        s = Serializer.msgpack()
+        a = { 'foo': 'bar', u'foo\u2020': u'bar\u2020' }
+        b = s.encode(a)
+        c = s.decode(b)
+        self.assertEqual(a, c)
 
 class TestDL(unittest.TestCase):
     def test_dirlist(self):
@@ -383,7 +390,7 @@ class TestQL(unittest.TestCase):
                     results[p].append(i)
                 except KeyError:
                     results[p] = [i]
-        self.assertDictEqual(self.matches, results)
+        self.assertEqual(self.matches, results)
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-from . import lib, ffi
+from . import lib, ffi, wire
 from .serializer import Serializer
 
 UNSPECIFIED = object()
@@ -21,7 +21,7 @@ class SSet(object):
 
     def add(self, value):
         value = self.serialize_value.encode(value)
-        return bool(lib.kv_put(self._kv, value, len(value), '', lib.DB_NOOVERWRITE))
+        return bool(lib.kv_put(self._kv, value, len(value), b'', lib.DB_NOOVERWRITE))
 
     def remove(self, value):
         value = self.serialize_value.encode(value)
@@ -83,21 +83,23 @@ class SSetIterator(object):
             pfx = ffi.NULL
             pfxlen = 0
         else:
-            pfx = str(pfx)
+            pfx = wire.encode(pfx)
             pfxlen = len(pfx)
         self._iter = lib.kv_iter_pfx(kv._kv, pfx, pfxlen)
 
     def __iter__(self):
         return self
 
-    def next(self):
+    def __next__(self):
         if not lib.kv_iter_next(self._iter, self._key, self._klen, self._data, self._dlen):
             lib.kv_iter_close(self._iter)
             self._iter = None
             raise StopIteration
-        return self.serialize_value.decode(ffi.buffer(self._key[0], self._klen[0]))
+        return self.serialize_value.decode(ffi.buffer(self._key[0], self._klen[0])[:])
 
     def __del__(self):
         if self._iter is not None:
             lib.kv_iter_close(self._iter)
             self._iter = None
+
+    next = __next__

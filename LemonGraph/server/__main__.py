@@ -157,7 +157,7 @@ def main():
             log_levels[target] = level
 
     loghandler = LogHandler()
-    for target, level in log_levels.iteritems():
+    for target, level in log_levels.items():
         logger = logging.getLogger(target)
         logger.addHandler(loghandler)
         logger.setLevel(getattr(logging, level.upper()))
