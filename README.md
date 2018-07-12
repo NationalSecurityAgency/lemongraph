@@ -11,7 +11,7 @@ LemonGraph is a log-based transactional graph (nodes/edges/properties) database 
 7. Inject new data into graph
 8. Goto step 4
 
-The core of the graph library is written in C, and the Python (2.x) layer adds [friendly bindings](#python-example), a [query language](#query-language), and a [REST service](#rest-service). LemonGraph rides on top of (and inherits a lot of awesome from) Symas LMDB - a transactional key/value store that the OpenLDAP project developed to replace BerkeleyDB.
+The core of the graph library is written in C, and the Python layer adds [friendly bindings](#python-example), a [query language](#query-language), and a [REST service](#rest-service). LemonGraph rides on top of (and inherits a lot of awesome from) Symas LMDB - a transactional key/value store that the OpenLDAP project developed to replace BerkeleyDB.
 
 # Benchmarks
 
