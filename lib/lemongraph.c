@@ -686,7 +686,7 @@ static INLINE logID_t __edge_resolve(graph_txn_t txn, edge_t e, logID_t beforeID
 
 
 static INLINE node_t _node_resolve(graph_txn_t txn, void *type, size_t tlen, void *val, size_t vlen, logID_t beforeID, int readonly){
-	node_t e = (node_t) malloc(sizeof(*e));
+	node_t e = malloc(sizeof(*e));
 	e->rectype = GRAPH_NODE;
 	if(_string_resolve(txn, &e->type, type, tlen, readonly) &&
 	   _string_resolve(txn, &e->val, val, vlen, readonly) &&
@@ -698,7 +698,7 @@ static INLINE node_t _node_resolve(graph_txn_t txn, void *type, size_t tlen, voi
 }
 
 static INLINE edge_t _edge_resolve(graph_txn_t txn, node_t src, node_t tgt, void *type, size_t tlen, void *val, size_t vlen, logID_t beforeID, int readonly){
-	edge_t e = (edge_t) malloc(sizeof(*e));
+	edge_t e = malloc(sizeof(*e));
 	e->rectype = GRAPH_EDGE;
 	assert(src && tgt);
 	e->src = src->id;
@@ -713,7 +713,7 @@ static INLINE edge_t _edge_resolve(graph_txn_t txn, node_t src, node_t tgt, void
 }
 
 static INLINE prop_t _prop_resolve(graph_txn_t txn, entry_t parent, void *key, size_t klen, void *val, size_t vlen, logID_t beforeID, int readonly){
-	prop_t e = (prop_t) malloc(sizeof(*e));
+	prop_t e = malloc(sizeof(*e));
 	e->rectype = GRAPH_PROP;
 	e->pid = parent->id;
 	if(_string_resolve(txn, &e->key, key, klen, readonly) &&
@@ -742,7 +742,7 @@ entry_t graph_entry(graph_txn_t txn, const logID_t id){
 		const int rectype = *(uint8_t *)data.data;
 		assert(rectype < sizeof(recsizes) / sizeof(*recsizes));
 		int klen = 1;
-		e = (entry_t) malloc(recsizes[rectype]);
+		e = malloc(recsizes[rectype]);
 		e->id = id;
 		e->rectype = rectype;
 		decode(e->next, data.data, klen);
@@ -955,7 +955,7 @@ kv_t graph_kv(graph_txn_t txn, const void *domain, const size_t dlen, const int 
 	if(!_string_resolve(txn, &domainID, domain, dlen, readonly))
 		goto fail;
 
-	kv = (kv_t) malloc(sizeof(*kv));
+	kv = malloc(sizeof(*kv));
 	if(!kv)
 		goto fail;
 
@@ -1284,9 +1284,6 @@ graph_iter_t graph_node_edges_out(graph_txn_t txn, node_t node, logID_t beforeID
 }
 
 graph_iter_t graph_node_edges(graph_txn_t txn, node_t node, logID_t beforeID){
-	graph_iter_t in = graph_node_edges_in(txn, node, beforeID);
-	graph_iter_t out = graph_node_edges_out(txn, node, beforeID);
-	return graph_iter_concat(2, in, out);
 	return graph_iter_concat(2,
 		graph_node_edges_in(txn, node, beforeID),
 		graph_node_edges_out(txn, node, beforeID));
