@@ -21,7 +21,7 @@ class SSet(object):
 
     def add(self, value):
         value = self.serialize_value.encode(value)
-        return bool(lib.kv_put(self._kv, value, len(value), b'', lib.DB_NOOVERWRITE))
+        return bool(lib.kv_put(self._kv, value, len(value), b'', 0))
 
     def remove(self, value):
         value = self.serialize_value.encode(value)

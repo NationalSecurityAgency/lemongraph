@@ -75,6 +75,7 @@ class StatusIndex(object):
     def update(self, uuid, old, new):
         oldkeys = self.indexer.index(old)
         newkeys = self.indexer.index(new)
+        uuid = uuid.encode()
         for name, crc in oldkeys.difference(newkeys):
             keys = self._index(name)
             try:
@@ -83,7 +84,7 @@ class StatusIndex(object):
                 pass
         for name, crc in newkeys.difference(oldkeys):
             keys = self._index(name)
-            keys.add(crc + uuid.encode())
+            keys.add(crc + uuid)
 
     def _index(self, idx):
         try:
