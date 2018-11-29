@@ -44,6 +44,8 @@ except NameError:
 # for node/edge types/values as well as property keys, you should strive to make sure the encoder is deterministic
 # if you plan to use complex values - if dicts are involved, msgpack is not so much.
 
+def identity(x):
+    return x
 
 class Serializer(object):
     @staticmethod
@@ -98,6 +100,10 @@ class Serializer(object):
             return int(lib.unpack_uint(b[:]))
 
         return Serializer(encode=encode, decode=decode)
+
+    @classmethod
+    def null(cls):
+        return Serializer(encode=identity, decode=identity)
 
     @classmethod
     def uints(cls, count, decode_type=tuple, string=False):
