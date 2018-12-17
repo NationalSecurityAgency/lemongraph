@@ -418,8 +418,12 @@ class Service(object):
 
         body = None
         try:
+            offset = h.offset
+        except AttributeError:
+            offset = 0
+        try:
             h.init(req, res)
-            body = handler(*req.components)
+            body = handler(*req.components[offset:])
             self.handle(body, req, res)
         except Exception as e:
             if isinstance(e, HTTPError):
@@ -590,7 +594,7 @@ class Request(object):
             content_length = 0
 
         if self.headers.contains('Expect','100-continue'):
-            self.sock.send('HTTP/1.1 100 Continue\r\n\r\n')
+            self.sock.send(b'HTTP/1.1 100 Continue\r\n\r\n')
             log.debug('continued!')
 
         # fixme - I'm not super sure how Transfer-Encoding and Content-Encoding get used

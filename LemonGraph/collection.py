@@ -14,7 +14,7 @@ import uuid
 from lazy import lazy
 from pysigset import suspended_signals
 
-from . import Graph, Serializer, Hooks, dirlist, Indexer, Query
+from . import Graph, Serializer, Hooks, dirlist, Indexer, BaseIndexer, Query
 
 try:
     xrange          # Python 2
@@ -64,41 +64,42 @@ class StatusIndexer(Indexer):
         except (KeyError, AttributeError):
             return ()
 
-class StatusIndex(object):
+class BaseIndex(object):
+    def __init__(self, ctx):
+        self.ctx = ctx
+        self._indexes = {}
+
+class StatusIndex(BaseIndex):
+    indexer = StatusIndexer()
     domain = 'status'
     null = Serializer.null()
 
-    def __init__(self, ctx):
-        self.ctx = ctx
-        self.indexer = StatusIndexer()
-        self._indexes = {}
+    def index(self, idx):
+        try:
+            return self._indexes[idx]
+        except KeyError:
+            index = self._indexes[idx] = self.ctx.txn.sset('lg.collection.idx.%s.%s' % (self.domain, idx), serialize_value=self.null)
+        return index
 
     def update(self, uuid, old, new):
         oldkeys = self.indexer.index(old)
         newkeys = self.indexer.index(new)
         uuid = uuid.encode()
         for name, crc in oldkeys.difference(newkeys):
-            keys = self._index(name)
+            keys = self.index(name)
             try:
                 keys.remove(crc + uuid)
             except KeyError:
                 pass
         for name, crc in newkeys.difference(oldkeys):
-            keys = self._index(name)
+            keys = self.index(name)
             keys.add(crc + uuid)
-
-    def _index(self, idx):
-        try:
-            return self._indexes[idx]
-        except KeyError:
-            self._indexes[idx] = self.ctx.txn.sset('lg.collection.idx.%s.%s' % (self.domain, idx), serialize_value=self.null)
-        return self._indexes[idx]
 
     def search(self, idx, value):
         idx, crc, check = self.indexer.prequery(idx, value)
         crclen = len(crc)
         try:
-            index = self._index(idx)
+            index = self.index(idx)
         except KeyError:
             return
         for key in index.iterpfx(pfx=crc):
@@ -106,6 +107,80 @@ class StatusIndex(object):
             status = self.ctx.statusDB[uuid]
             if check(status):
                 yield uuid, status
+
+class LG_LiteIndexer(BaseIndexer):
+    def idx_adapters(self, obj):
+        try:
+            return obj['adapters']
+        except KeyError:
+            return ()
+
+    def key(self, name, value):
+        if isinstance(value, list):
+            value = tuple(value)
+        return (name,) + value
+
+class LG_LiteIndex(BaseIndex):
+    indexer = LG_LiteIndexer()
+    domain = "lg_lite"
+    uuid = Serializer.uuid()
+
+    def update(self, uuid, old, new):
+        oldkeys = self.indexer.index(old)
+        newkeys = self.indexer.index(new)
+
+        # keys should be ('adapters', <adaptername>, <query>, <priority>)
+        for _, adapter, query, pri in oldkeys.difference(newkeys):
+            assert _ == 'adapters'
+            aqb = '%s:%s' % (adapter, query)
+            pq = self.jobs(adapter, query)
+            pq.remove(uuid)
+            if pq.empty:
+                self.queries(adapter).remove(query)
+                del self.adapters[aqb]
+            else:
+                self.adapters[aqb] -= 1
+
+        for _, adapter, query, pri in newkeys.difference(oldkeys):
+            assert _ == 'adapters'
+            aqb = '%s:%s' % (adapter, query)
+            pq = self.jobs(adapter, query)
+            try:
+                self.adapters[aqb] += 1
+            except KeyError:
+                self.queries(adapter).add(query)
+                self.adapters[aqb] = 1
+            pq.add(uuid, priority=pri)
+
+    # list of active queries per adapter
+    def queries(self, adapter):
+        try:
+            return self._queries[adapter]
+        except KeyError:
+            ret = self.ctx.txn.sset('lg.collection.idx.%s.%s' % (self.domain, adapter), map_values=True)
+            self._queries[adapter] = ret
+            return ret
+
+    # priority queue of jobs per adapter/query pair
+    def jobs(self, adapter, query):
+        try:
+            return self._jobs[adapter, query]
+        except KeyError:
+            ret = self.ctx.txn.pqueue('lg.collection.pq.%s.%s.%s' % (self.domain, adapter, query), serialize_value=self.uuid)
+            self._jobs[adapter, query] = ret
+            return ret
+
+    @lazy
+    def _queries(self):
+        return {}
+
+    @lazy
+    def _jobs(self):
+        return {}
+
+    @lazy
+    def adapters(self):
+        return self.ctx.txn.kv('lg.collection.idx.adapters', map_keys=True, serialize_value=self.ctx.uint)
 
 class Context(object):
     def __init__(self, collection, write=True):
@@ -192,27 +267,26 @@ class Context(object):
     def sync(self, uuid, txn):
         old_status, new_status = self._sync_status(uuid, txn)
         self.status_index.update(uuid, old_status, new_status)
+        self.lg_lite_index.update(uuid, old_status, new_status)
         self.metaDB[uuid] = txn.as_dict()
 
     @lazy
     def status_index(self):
         return StatusIndex(self)
 
+    @lazy
+    def lg_lite_index(self):
+        return LG_LiteIndex(self)
+
     def _sync_status(self, uuid, txn):
-        status = {'nextID': txn.nextID,
-                  'size': txn.graph.size,
-                  'nodes_count': txn.nodes_count(),
-                  'edges_count': txn.edges_count()}
-
-        try:
-            status['enabled'] = bool(txn['enabled'])
-        except KeyError:
-            status['enabled'] = True
-
-        try:
-            status['priority'] = sorted((0, int(txn['priority']), 255))[1]
-        except (KeyError, ValueError):
-            status['priority'] = 100
+        status = {
+            'nextID': txn.nextID,
+            'size': txn.graph.size,
+            'nodes_count': txn.nodes_count(),
+            'edges_count': txn.edges_count(),
+            'enabled': txn.enabled,
+            'priority': txn.priority,
+        }
 
         try:
             roles_graph = txn['roles']
@@ -225,18 +299,25 @@ class Context(object):
         except: # fixme
             pass
 
+        status['adapters'] = adapters = []
+        if status['enabled']:
+            pri = (status['priority'],)
+            for flow in txn.lg_lite.flows():
+                if flow.active:
+                    adapters.append(flow.aqb + pri)
+
         try:
             old_status = self.statusDB[uuid]
         except KeyError:
             old_status = None
         self.statusDB[uuid] = status
-
         return old_status, status
 
     def remove(self, uuid):
         try:
             status = self.statusDB.pop(uuid)
             self.status_index.update(uuid, status, None)
+            self.lg_lite_index.update(uuid, status, None)
         except KeyError:
             pass
         try:
@@ -431,7 +512,7 @@ class Collection(object):
     def context(self, write=True):
         return Context(self, write=write)
 
-    def daemon(self, poll=250, maxopen=1000):
+    def daemon(self, poll=250, maxopen=100):
         poll /= 1000.0
         ticker = self.ticker()
         todo = deque()
@@ -479,6 +560,7 @@ class Collection(object):
             backlog = True
             while backlog:
                 with suspended_signals(signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                    then = time()
                     try:
                         log.debug("syncing")
                         with self.context(write=True) as ctx:
@@ -500,7 +582,10 @@ class Collection(object):
                         for fd in todo:
                             os.close(fd)
                         todo.clear()
-                log.info("synced %d, backlog %d, age %.1fs", count, backlog, time() - age)
+                with self.context(write=False) as ctx:
+                    backlog = len(ctx.updatedDB)
+                now = time()
+                log.info("synced %d, backlog %d, age %.1fs, elapsed %.1fs", count, backlog, now - age, now - then)
 
     @lazy
     def msgpack(self):

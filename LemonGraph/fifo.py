@@ -14,6 +14,7 @@ class Fifo(object):
         enc = serialize_domain.encode(domain)
         flags = lib.LG_KV_MAP_DATA if map_values else 0
         self._dlen = ffi.new('size_t *')
+        self._dlen2 = ffi.new('size_t *')
         self._kv = lib.graph_kv(txn._txn, enc, len(enc), flags)
         self._idx = None
         if self._kv == ffi.NULL:
@@ -88,21 +89,29 @@ class Fifo(object):
 
     @property
     def empty(self):
-        return lib.kv_last_key(self._kv, self._dlen) == ffi.NULL
+        return lib.kv_first_key(self._kv, self._dlen) == ffi.NULL
 
     def __len__(self):
-        last = lib.kv_last_key(self._kv, self._dlen)
-        if last == ffi.NULL:
+        first = lib.kv_first_key(self._kv, self._dlen)
+        last  = lib.kv_last_key(self._kv, self._dlen2)
+        if ffi.NULL in (first, last):
             return 0
-        last = self.serialize_key.decode(ffi.buffer(last, self._dlen[0])[:])
-        for idx, _ in KVIterator(self):
-            return 1+last-idx
-        raise Exception
+        first = self.serialize_key.decode(ffi.buffer(first, self._dlen[0])[:])
+        last  = self.serialize_key.decode(ffi.buffer(last, self._dlen2[0])[:])
+        return 1 + last - first
 
     def __del__(self):
         if self._kv is not None:
             lib.kv_deref(self._kv)
             self._kv = None
+
+    def __iter__(self):
+        for key, data in  KVIterator(self):
+            yield data
+
+    def clear(self):
+        return bool(lib.kv_clear(self._kv));
+
 
 class KVIterator(object):
     def __init__(self, kv):

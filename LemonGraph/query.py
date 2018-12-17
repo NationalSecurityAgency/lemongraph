@@ -5,6 +5,9 @@ from six import iteritems, iterkeys
 from . import Node, Edge
 from .MatchLGQL import MatchLGQL, MatchCTX, QueryCannotMatch, eval_test
 
+def noop_scanner(entry):
+    pass
+
 class Query(object):
     magic = {
         'N': {
@@ -145,18 +148,7 @@ class Query(object):
 
         self.handlers = self.cache[('h',) + self.patterns] = handlers
 
-    def _starts(self, txn, start, stop, scanner=None):
-        handlers = self.handlers
-        for entry in txn.scan(start=start, stop=stop):
-            if scanner is not None:
-                scanner(entry)
-            try:
-                for x in handlers[entry.code](entry):
-                    yield x
-            except KeyError:
-                pass
-
-    def _adhoc(self, txn, stop, limit):
+    def _adhoc(self, txn, stop=0):
         for p_idx, c in enumerate(self.compiled):
             if c is None:
                 continue
@@ -192,10 +184,21 @@ class Query(object):
                 if valid:
                     yield p, chain
 
-    def _streaming(self, txn, start, stop, limit, scanner):
+    def _starts(self, txn, scanner=noop_scanner, **kwargs):
+        handlers = self.handlers
+        for entry in txn.scan(**kwargs):
+            if scanner(entry):
+                return
+            try:
+                for x in handlers[entry.code](entry):
+                    yield x
+            except KeyError:
+                pass
+
+    def _streaming(self, txn, **kwargs):
         self._gen_handlers()
         ctxs = {}
-        for target, tocs in self._starts(txn, start=start, stop=stop, scanner=scanner):
+        for target, tocs in self._starts(txn, **kwargs):
             for p_idx, idx in tocs:
                 p = self.patterns[p_idx]
                 try:
@@ -218,9 +221,9 @@ class Query(object):
                 else:
                     return
 
-    def execute(self, txn, start=0, stop=0, limit=0, scanner=None):
+    def execute(self, txn, start=0, limit=0, **kwargs):
         limit = int(limit)
-        pat_matches = self._streaming(txn, start, stop, limit, scanner) if start else self._adhoc(txn, stop, limit)
+        pat_matches = self._streaming(txn, start=start, **kwargs) if start else self._adhoc(txn, **kwargs)
         return self._exec_limit(pat_matches, limit) if limit else self._exec(pat_matches)
 
     def _scan_static(self, trigs, entry, seen):

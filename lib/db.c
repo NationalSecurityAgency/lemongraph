@@ -122,6 +122,23 @@ int cursor_count(cursor_t cursor, size_t *count){
 	return cursor->prev ? mdb_cursor_count(CURSOR(cursor), count) : MDB_BAD_TXN;
 }
 
+int cursor_first_key(cursor_t cursor, buffer_t *key, uint8_t *pfx, const unsigned int pfxlen){
+	if(!cursor->prev)
+		return MDB_BAD_TXN;
+
+	if(!pfx || !pfxlen)
+		return mdb_cursor_get(CURSOR(cursor), (MDB_val *)key, NULL, MDB_FIRST);
+
+	key->size = pfxlen;
+	key->data = pfx;
+	int r = mdb_cursor_get(CURSOR(cursor), (MDB_val *)key, NULL, MDB_SET_RANGE);
+	if(DB_SUCCESS == r){
+		if(key->size < pfxlen || memcmp(key->data, pfx, pfxlen))
+			r = DB_NOTFOUND;
+	}
+	return r;
+}
+
 int cursor_last_key(cursor_t cursor, buffer_t *key, uint8_t *pfx, const unsigned int pfxlen){
 	if(!cursor->prev)
 		return MDB_BAD_TXN;
@@ -627,6 +644,7 @@ int txn_iter_new(iter_t *iter, txn_t txn, int dbi, void *pfx, const unsigned int
 int txn_iter_init(iter_t iter, txn_t txn, int dbi, void *pfx, const unsigned int len){
 	int r = txn_cursor_init((cursor_t)iter, txn, dbi);
 	if(DB_SUCCESS == r){
+		iter->r = DB_SUCCESS;
 		iter->pfxlen = len;
 		iter->release = 0;
 		if(len){
@@ -646,11 +664,23 @@ int txn_iter_init(iter_t iter, txn_t txn, int dbi, void *pfx, const unsigned int
 	return r;
 }
 
+// if this succeeds, subsequent calls to iter_next() may still fail
+// if this fails, then subsequent calls to iter_next() will also fail
+int iter_seek(iter_t iter, void *pfx, const unsigned int len){
+	struct buffer_t key = { .size = len, .data = pfx };
+	// advance cursor now, so we don't have to duplicate the pointer
+	iter->r = cursor_get((cursor_t)iter, &key, NULL, DB_SET_RANGE);
+	iter->op = DB_SET; // we really just want a noop here
+	return iter->r;
+}
+
 static INLINE int _iter_next(iter_t iter, const int data){
+	if(DB_SUCCESS != iter->r)
+		return iter->r;
+
 	// set/advance key
-	iter->r = cursor_get((cursor_t)iter, &(iter->key), &(iter->data), (MDB_cursor_op)iter->op);
-	if(DB_NEXT != iter->op)
-		iter->op = DB_NEXT;
+	iter->r = cursor_get((cursor_t)iter, &(iter->key), NULL, iter->op);
+	iter->op = DB_NEXT;
 	if(DB_SUCCESS != iter->r)
 		return iter->r;
 

@@ -181,6 +181,7 @@ void graph_iter_close(graph_iter_t iter);
 
 char *graph_string(graph_txn_t txn, strID_t id, size_t *len);
 int graph_string_lookup(graph_txn_t txn, strID_t *id, void const *data, const size_t len);
+int graph_string_resolve(graph_txn_t txn, strID_t *id, void const *data, const size_t len);
 logID_t graph_log_nextID(graph_txn_t txn);
 
 // kv storage api - domains get mapped to stringIDs via the string storage layer
@@ -191,15 +192,40 @@ logID_t graph_log_nextID(graph_txn_t txn);
 
 kv_t graph_kv(graph_txn_t txn, const void *domain, const size_t dlen, const int flags);
 void *kv_get(kv_t kv, void *key, size_t klen, size_t *dlen);
+void *kv_first_key(kv_t kv, size_t *klen);
 void *kv_last_key(kv_t kv, size_t *len);
 int kv_del(kv_t kv, void *key, size_t klen);
 int kv_put(kv_t kv, void *key, size_t klen, void *data, size_t dlen);
+int kv_next(kv_t kv, void **key, size_t *klen, void **data, size_t *dlen);
+int kv_next_reset(kv_t kv);
+int kv_clear_pfx(kv_t kv, uint8_t *pfx, unsigned int len);
+int kv_clear(kv_t kv);
 void kv_deref(kv_t kv);
 
 kv_iter_t kv_iter(kv_t kv);
 kv_iter_t kv_iter_pfx(kv_t kv, uint8_t *pfx, unsigned int len);
 int kv_iter_next(kv_iter_t iter, void **key, size_t *klen, void **data, size_t *dlen);
+int kv_iter_seek(kv_iter_t iter, void *key, size_t klen);
 void kv_iter_close(kv_iter_t iter);
+
+// priority queues
+int kv_pq_add(kv_t kv, void *key, size_t klen, uint8_t priority);
+int kv_pq_get(kv_t kv, void *key, size_t klen);
+int kv_pq_del(kv_t kv, void *key, size_t klen);
+kv_iter_t kv_pq_iter(kv_t kv);
+int kv_pq_iter_next(kv_iter_t iter, void **data, size_t *dlen);
+uint8_t *kv_pq_cursor(kv_t kv, uint8_t priority);
+int kv_pq_cursor_next(graph_txn_t txn, uint8_t *cursor, void **key, size_t *klen);
+void kv_pq_cursor_close(uint8_t *cursor);
+
+// helpers for serializing/unserializing tuples of non-negative integers
+int pack_uints(int count, uint64_t *ints, void *buffer);
+int unpack_uints(int count, uint64_t *ints, void *buffer);
+int unpack_uints2(int count, uint64_t *ints, void *buffer, size_t buflen);
+int pack_uint(uint64_t i, char *buffer);
+uint64_t unpack_uint(char *buffer);
+
+typedef ... DIR;
 
 // snapshot foo
 int db_snapshot_to_fd(db_t db, int fd, int compact);
@@ -207,14 +233,6 @@ db_snapshot_t db_snapshot_new(db_t db, int compact);
 ssize_t db_snapshot_read(db_snapshot_t snap, void *buffer, size_t len);
 int db_snapshot_close(db_snapshot_t snap);
 int db_snapshot_fd(db_snapshot_t snap);
-
-// helpers for serializing/unserializing tuples of non-negative integers
-int pack_uints(int count, uint64_t *ints, void *buffer);
-int unpack_uints(int count, uint64_t *ints, void *buffer);
-int pack_uint(uint64_t i, char *buffer);
-uint64_t unpack_uint(char *buffer);
-
-typedef ... DIR;
 
 // custom extras
 void watch_parent(int sig);
@@ -239,7 +257,7 @@ db_snapshot_t graph_snapshot_new(graph_t g, int compact);
 '''
 
 C_KEYWORDS = dict(
-    sources=['deps/lmdb/libraries/liblmdb/mdb.c', 'deps/lmdb/libraries/liblmdb/midl.c', 'lib/lemongraph.c', 'lib/db.c'],
+    sources=['deps/lmdb/libraries/liblmdb/mdb.c', 'deps/lmdb/libraries/liblmdb/midl.c', 'lib/lemongraph.c', 'lib/db.c', 'lib/counter.c'],
     include_dirs=['lib','deps/lmdb/libraries/liblmdb'],
     libraries=['z'],
 )

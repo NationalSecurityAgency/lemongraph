@@ -3,7 +3,7 @@ from zlib import crc32
 from struct import pack
 from six import iteritems
 
-class Indexer(object):
+class BaseIndexer(object):
     def __init__(self):
         idx = {}
         for name in dir(self):
@@ -22,17 +22,18 @@ class Indexer(object):
         if obj is not None:
             for name, method in iteritems(self._idx):
                 for value in method(obj):
-                    try:
-                        key = self.key(name, value)
-                    except TypeError:
-                        # fixme? silently ignore non-deterministic things
-                        continue
+                    key = self.key(name, value)
                     keys.add(key)
         return keys
 
-    def key(self, name, value, smash=True):
+    def key(self, name, value):
+        return name, value
+
+class Indexer(BaseIndexer):
+
+    def key(self, name, value):
         hash(value)
-        return str(name), pack('=i',crc32(msgpack.packb(value)))
+        return str(name), pack('=i',crc32(msgpack.packb(value, use_bin_type=False)))
 
     def prequery(self, index, value):
         key = self.key(index, value)

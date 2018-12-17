@@ -1,6 +1,8 @@
 from . import lib, ffi, wire, listify_py2
 from .serializer import Serializer
 
+UNSPECIFIED = object()
+
 class KV(object):
     def __init__(self, txn, domain, map_data=False, map_keys=False, serialize_domain=Serializer(), serialize_key=Serializer(), serialize_value=Serializer()):
         self._kv = None
@@ -22,8 +24,8 @@ class KV(object):
             raise KeyError(domain)
 
     def __getitem__(self, key):
-        key = self.serialize_key.encode(key)
-        data = lib.kv_get(self._kv, key, len(key), self._dlen)
+        ekey = self.serialize_key.encode(key)
+        data = lib.kv_get(self._kv, ekey, len(ekey), self._dlen)
         if data == ffi.NULL:
             raise KeyError(key)
         return self.serialize_value.decode(ffi.buffer(data, self._dlen[0])[:])
@@ -44,18 +46,23 @@ class KV(object):
         data = lib.kv_get(self._kv, key, len(key), self._dlen)
         return False if data == ffi.NULL else True
 
-    def get(self, key, default=None):
+    def get(self, key, default=UNSPECIFIED):
         try:
             return self[key]
         except KeyError:
+            if default is UNSPECIFIED:
+                raise
             return default
 
-    def pop(self, key, default=None):
+    def pop(self, key, default=UNSPECIFIED):
         try:
-            ret = self[key]
-            del self[key]
-            return ret
+            try:
+                return self[key]
+            finally:
+                del self[key]
         except KeyError:
+            if default is UNSPECIFIED:
+                raise
             return default
 
     def iterkeys(self, pfx=None):
@@ -87,6 +94,33 @@ class KV(object):
         for k in self.iterkeys():
             return False
         return True
+
+    def clear(self, pfx=None):
+        if pfx is None:
+            return bool(lib.kv_clear(self._kv))
+        pfx = wire.encode(pfx)
+        return bool(lib.kv_clear_pfx(self._kv, pfx, len(pfx)));
+
+    def next(self):
+        key  = ffi.new('void **')
+        data = ffi.new('void **')
+        klen = ffi.new('size_t *')
+        dlen = ffi.new('size_t *')
+
+        if lib.kv_next(self._kv, key, klen, data, dlen):
+            return (self.serialize_key.decode(ffi.buffer(key[0],  klen[0])[:]),
+                  self.serialize_value.decode(ffi.buffer(data[0], dlen[0])[:]))
+        raise IndexError()
+
+    def next_key(self):
+        key  = ffi.new('void **')
+        data = ffi.new('void **')
+        klen = ffi.new('size_t *')
+        dlen = ffi.new('size_t *')
+
+        if lib.kv_next(self._kv, key, klen, data, dlen):
+            return self.serialize_key.decode(ffi.buffer(key[0],  klen[0])[:])
+        raise IndexError()
 
 class KVIterator(object):
     def __init__(self, kv, handler, pfx=None):

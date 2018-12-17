@@ -24,8 +24,9 @@ import sys
 from .callableiterable import CallableIterableMethod
 from .hooks import Hooks
 from .dirlist import dirlist
-from .indexer import Indexer
+from .indexer import Indexer, BaseIndexer
 from .MatchLGQL import QueryCannotMatch, QuerySyntaxError
+from .lg_lite import LG_Lite
 from . import algorithms
 from . import wire
 
@@ -36,6 +37,7 @@ from .query import Query
 from .fifo import Fifo
 from .serializer import Serializer
 from .sset import SSet
+from .pqueue import PQueue
 '''
 
 # so I can easily create keys/items/values class
@@ -82,6 +84,7 @@ def merge_values(a, b):
             pass
     return b
 
+UNSPECIFIED = object()
 
 class Graph(object):
     serializers = tuple('serialize_' + x for x in ('node_type', 'node_value', 'edge_type', 'edge_value', 'property_key', 'property_value'))
@@ -117,7 +120,7 @@ class Graph(object):
             raise IOError(ffi.errno, ffi.string(lib.graph_strerror(ffi.errno)))
         self._path = os.path.abspath(path)
         self.nosubdir = nosubdir
-        self.adapters = adapters
+        self._inline_adapters = adapters
         self._hooks = hooks
         self._hooks.opened(self)
 
@@ -223,7 +226,7 @@ class GraphItem(object):
 
     # fetch Buffer for given ID - do not use resulting buffer outside of the transaction
     # it was obtained in, or after a potential modification (new nodes/edges/properties, etc)
-    def string(self, ID):
+    def string(self, ID, update=False):
         size = ffi.new('size_t *')
         buffer = lib.graph_string(self._txn, ID, size)
         return ffi.buffer(buffer, size[0])[:]
@@ -325,7 +328,7 @@ class Transaction(GraphItem):
         self._parent = ffi.NULL if _parent is None else _parent
         self._txn = None
         self.txn_flags = 0 if write else lib.DB_RDONLY
-        self.adapters = graph.adapters if write else None
+        self._inline_adapters = graph._inline_adapters if write else None
 
     # create a child transaction - not possible if DB_WRITEMAP was enabled (it is disabled)
     def transaction(self, write=None, beforeID=None):
@@ -346,9 +349,9 @@ class Transaction(GraphItem):
         return lib.graph_txn_updated(self._txn)
 
     def flush(self, updated=False):
-        if (updated or self.updated) and self.adapters is not None and self.nextID > self._flushID:
+        if (updated or self.updated) and self._inline_adapters is not None and self.nextID > self._flushID:
             # exercise inline graph adapters
-            self.adapters.update(self, self._flushID)
+            self._inline_adapters.update(self, self._flushID)
             self._flushID = self.nextID
 
     def reset(self):
@@ -533,6 +536,13 @@ class Transaction(GraphItem):
             kwargs['serialize_value'] = serialize_value
         return SSet(self, domain, map_values=map_values, **kwargs)
 
+    def pqueue(self, domain, map_values=False, serialize_value=None):
+        """domain-specific priority queue"""
+        kwargs = {}
+        if serialize_value:
+            kwargs['serialize_value'] = serialize_value
+        return PQueue(self, domain, map_values=map_values, **kwargs)
+
     def fifo(self, domain, map_values=False, serialize_value=None):
         """domain-specific fifo"""
         kwargs = {}
@@ -576,16 +586,54 @@ class Transaction(GraphItem):
             before_after_keys.append(ID)
             yield tuple(before_after_keys)
 
-    def query(self, pattern, start=0, stop=0, cache=None, limit=0):
-        q = Query((pattern,), cache={} if cache is None else cache)
+    def query(self, pattern, cache=None, **kwargs):
+        q = Query((pattern,), cache=cache)
         def just_chain():
-            for _, chain in q.execute(self, start=start, stop=stop, limit=limit):
+            for _, chain in q.execute(self, **kwargs):
                 yield chain
         return just_chain()
 
-    def mquery(self, patterns, start=0, stop=0, cache=None, limit=0):
-        q = Query(patterns, cache={} if cache is None else cache)
-        return q.execute(self, start=start, stop=stop, limit=limit)
+    def mquery(self, patterns, cache=None, **kwargs):
+        q = Query(patterns, cache=cache)
+        return q.execute(self, **kwargs)
+
+    # fetch numeric ID for binary buffer
+    def stringID(self, data, update=UNSPECIFIED):
+        # default to txn read/write setting, allow 'update' param to override
+        if update is UNSPECIFIED:
+            update = self.write
+        ID = ffi.new('strID_t *')
+        resolve = lib.graph_string_resolve if update else lib.graph_string_lookup
+        if resolve(self._txn, ID, data, len(data)):
+            return ID[0]
+        raise KeyError(data)
+
+    @lazy
+    def lg_lite(self):
+        return LG_Lite(self)
+
+    @builtin.property
+    def enabled(self):
+        try:
+            return bool(self['enabled'])
+        except KeyError:
+            return True
+
+    @enabled.setter
+    def enabled(self, val):
+        self['enabled'] = bool(val)
+
+    # priority [0..255], higher number is higher priority
+    @builtin.property
+    def priority(self):
+        try:
+            return sorted((0, int(self['priority']), 255))[1]
+        except (KeyError, ValueError):
+            return 100
+
+    @priority.setter
+    def priority(self, val):
+        self['priority'] = sorted((0, int(val), 255))[1]
 
 
 class NodeEdgeProperty(GraphItem):
@@ -1093,3 +1141,4 @@ from .query import Query
 from .fifo import Fifo
 from .serializer import Serializer
 from .sset import SSet
+from .pqueue import PQueue

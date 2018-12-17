@@ -91,9 +91,9 @@ def fetch_external():
 
 
 reqs = [
-    'cffi>=1.0.1,<1.12',
+    'cffi>=1.0.1,<1.13',
     'lazy>=1.0,<1.4',
-    'msgpack>=0.5.2,<0.6',
+    'msgpack>=0.6,<0.7',
     'pysigset>=0.2,<0.4',
     'python-dateutil>=1.4,<2.7',
     'six',

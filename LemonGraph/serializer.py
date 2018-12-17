@@ -2,6 +2,7 @@ from . import ffi, lib, wire
 import msgpack as messagepack
 import collections
 import sys
+import uuid
 
 try:
     xrange          # Python 2
@@ -69,14 +70,14 @@ class Serializer(object):
             def encode(x):
                 if not isinstance(x, collections.Hashable):
                     raise ValueError(x)
-                return messagepack.packb(x)
+                return messagepack.packb(x, use_bin_type=False)
 
             def decode(x):
                 return messagepack.unpackb(x, raw=False, use_list=False)
 
         else:
             def encode(x):
-                return messagepack.packb(x)
+                return messagepack.packb(x, use_bin_type=False)
 
             def decode(x):
                 return messagepack.unpackb(x, raw=False)
@@ -102,8 +103,22 @@ class Serializer(object):
         return Serializer(encode=encode, decode=decode)
 
     @classmethod
+    def vuints(cls, decode_type=tuple):
+        x = vuints_impl(decode_type)
+        return Serializer(encode=x.encode, decode=x.decode)
+
+    @classmethod
+    def uints2d(cls):
+        x = uints2d_impl()
+        return Serializer(encode=x.encode, decode=x.decode)
+
+    @classmethod
     def null(cls):
         return Serializer(encode=identity, decode=identity)
+
+    @classmethod
+    def uuid(cls):
+        return UUID_impl()
 
     @classmethod
     def uints(cls, count, decode_type=tuple, string=False):
@@ -160,6 +175,73 @@ class Serializer(object):
             buf = ffi.buffer(buffer, size + decoded[count-1])
             ret = list(int(decoded[i]) for i in xrange(0, count-1))
             ret.append(wire.decode(buf[size:]))
-            return decode_type(ret)
+            return decode_type(x for x in ret)
 
         return Serializer(encode=encode, decode=decode)
+
+class vuints_impl:
+    buffer = None
+    decoded = None
+    maxlen = 0
+
+    def __init__(self, decode_type):
+        self.decode_type = decode_type
+        self.alloc(1)
+
+    def alloc(self, count):
+        self.buffer = ffi.new('char[]', 9 * count)
+        self.decoded = ffi.new('uint64_t[]', count)
+        self.maxlen = count
+
+    def encode(self, n):
+        count = len(n)
+        if count > self.maxlen:
+            self.alloc(count)
+        size = lib.pack_uints(count, n, self.buffer)
+        return ffi.buffer(self.buffer, size)[:]
+
+    def decode(self, b):
+        count = lib.unpack_uints2(self.maxlen, self.decoded, b[:], len(b))
+        if count > self.maxlen:
+            self.alloc(count)
+            count = lib.unpack_uints2(count, self.decoded, b[:], len(b))
+        return self.decode_type(int(self.decoded[i]) for i in xrange(0, count))
+
+class uints2d_impl:
+    cache = {}
+
+    def encode(self, records):
+        rows = len(records)
+        cols = len(records[0])
+        bin = []
+        bin.append(self.uints(2).encode([rows, cols]))
+        row = self.uints(cols)
+        for record in records:
+            bin.append(row.encode(record))
+        return b''.join(bin)
+
+    def decode(self, b):
+        decoded = ffi.new('uint64_t[]', 2)
+        offset = lib.unpack_uints(2, decoded, b[:])
+        rows, cols = decoded
+        decoded = ffi.new('uint64_t[]', cols)
+        ret = []
+        while rows > 0:
+            offset += lib.unpack_uints(cols, decoded, b[offset:])
+            ret.append(tuple(map(int,decoded)))
+            rows -= 1
+        return tuple(ret)
+
+    def uints(self, n):
+        try:
+            ret = self.cache[n]
+        except KeyError:
+            ret = self.cache[n] = Serializer.uints(n, decode_type=list)
+        return ret
+
+class UUID_impl(object):
+    def encode(self, s):
+        return uuid.UUID(s).bytes
+
+    def decode(self, b):
+        return str(uuid.UUID(bytes=b))

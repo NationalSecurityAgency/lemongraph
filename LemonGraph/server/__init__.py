@@ -11,7 +11,7 @@ import msgpack
 import os
 import pkg_resources
 import re
-from six import iteritems, itervalues
+from six import iteritems, itervalues, string_types
 from six.moves.urllib_parse import parse_qs
 import sys
 import tempfile
@@ -32,6 +32,7 @@ BLOCKSIZE=1048576
 UUID = re.compile(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
 INT = re.compile(r'^[1-9][0-9]*$')
 STRING = re.compile(r'^.+$')
+ADAPTER = re.compile(r'^[A-Z][A-Z0-9_]*$')
 
 def date_to_timestamp(s):
     dt = dateutil.parser.parse(s)
@@ -44,7 +45,7 @@ def js_dumps(obj, pretty=False):
     return txt
 
 def mp_dumps(obj, pretty=False):
-    return msgpack.packb(obj, raw=True)
+    return msgpack.packb(obj, use_bin_type=False)
 
 Streamer = namedtuple('Streamer', 'mime encode')
 streamJS = Streamer('application/json', js_dumps)
@@ -246,6 +247,7 @@ def graphtxn(write=False, create=False, excl=False, on_success=None, on_failure=
                             txn.flush()
                             self.res.headers.set('X-lg-updates', txn.lastID - lastID)
                         self.res.headers.set('X-lg-maxID', txn.lastID)
+                        self.res.headers.set('X-lg-id', uuid)
                         yield first
                         for x in ret:
                             yield x
@@ -289,6 +291,8 @@ class _Input(Handler):
             self.do_meta(txn, data['meta'], seed, create)
         elif create:
             self.do_meta(txn, {}, seed, create)
+        if 'adapters' in data:
+            txn.lg_lite.update_adapters(data['adapters'])
         if 'chains' in data:
             self.do_chains(txn, data['chains'], seed, create)
         if 'nodes' in data:
@@ -872,6 +876,7 @@ class Graph_UUID_Meta(_Input):
 
 class Graph_UUID_Seeds(Handler, _Streamy):
     path = ('graph', UUID, 'seeds')
+
     @graphtxn(write=False)
     def get(self, g, txn, _, uuid, __):
         return self.stream(SeedTracker(txn).seeds)
@@ -1026,6 +1031,283 @@ class Favicon(Static):
     def get(self, _):
         return super(Favicon, self).get(Static.path[0], 'lemon.png')
 
+
+UNSPECIFIED = object()
+
+def identity(x):
+    return x
+
+class _Params(object):
+    def _normalize(self, target):
+        if isinstance(target, (tuple, list)):
+            for x in target:
+                yield (x, identity)
+        elif isinstance(target, dict):
+            for x, y in iteritems(target):
+                yield (x, identity if y is None else y)
+        else:
+            yield (target, identity)
+
+    def merge_params(self, input={}, single=(), multi=()):
+        output = {}
+        seen = set()
+        for field, validate in self._normalize(single):
+            if field in seen:
+                raise RuntimeError(field)
+            seen.add(field)
+            if field in self.params:
+                val, = self.params[field]
+            elif field in input:
+                val = input[field]
+            else:
+                continue
+            output[field] = validate(val)
+
+        for field, validate in self._normalize(multi):
+            if field in seen:
+                raise RuntimeError(field)
+            seen.add(field)
+            if field in self.params:
+                vals = self.params[field]
+            elif field in input:
+                vals = input[field]
+                if not isinstance(vals, (tuple, list)):
+                    vals = [vals]
+            else:
+                continue
+            output[field] = tuple(validate(val) for val in vals)
+
+        for field in input:
+            if field not in seen:
+                raise KeyError(field)
+
+        for field in self.params:
+            if field not in seen:
+                raise KeyError(field)
+
+        return output
+
+class LG(Handler):
+    path = ('lg',)
+    offset = 2
+
+    def get(self):
+        stats = {}
+        with self.collection.context(write=False) as ctx:
+            try:
+                flows = ctx.lg_lite_index.adapters
+                for adapter_query, count in flows.iteritems():
+                    adapter, query = adapter_query.split(':', 1)
+                    try:
+                        stats[adapter][query] = count
+                    except KeyError:
+                        stats[adapter] = { query: count }
+            except KeyError:
+                pass
+        return self.dumps(stats, pretty=True)
+
+class LG_Config_Job(Handler):
+    path = ('lg', 'config', UUID)
+    offset = 2
+
+    def get(self, job_uuid, adapter=None):
+        ret = {}
+        with self.graph(job_uuid, create=False) as g:
+            with g.transaction(write=True) as txn:
+                for flow in txn.lg_lite.flows(adapter=adapter):
+                    data = {
+                        'pos': flow.pos,
+                        'qlen': flow.qlen,
+                        'tasks': flow.tasks,
+                        'active': flow.active,
+                        'enabled': flow.enabled,
+                        'autotask': flow.autotask,
+                    }
+                    try:
+                        ret[flow.adapter.adapter][flow.query] = data
+                    except KeyError:
+                        ret[flow.adapter.adapter] = { flow.query: data }
+        return self.dumps(ret, pretty=True)
+
+    def post(self, job_uuid):
+        config = self.input() or {}
+        with self.graph(job_uuid, create=False) as g:
+            with g.transaction(write=True) as txn:
+                txn.lg_lite.update_adapters(config)
+
+class LG_Config_Job_Adapter(LG_Config_Job):
+    path = ('lg', 'config', UUID, ADAPTER)
+
+    def post(self, job_uuid, adapter):
+        config = self.input() or {}
+        with self.graph(job_uuid, create=False) as g:
+            with g.transaction(write=True) as txn:
+                txn.lg_lite.update_adapter(adapter, config)
+
+class _LG_Tasky(Handler, _Streamy):
+    def stream_job_task(self, job_uuid, adapter, priority=None, **kwargs):
+        with self.graph(job_uuid, create=False) as g:
+            with g.transaction(write=True) as txn:
+                try:
+                    task = txn.lg_lite.task(adapter, **kwargs)
+                except IndexError:
+                    # kicks us out of the txn 'with' block
+                    txn.commit()
+
+                task.touch()
+                location = '/lg/adapter/%s/%s/%s' % (task.flow.adapter.adapter, job_uuid, task.uuid)
+                self.res.headers.set('Location', location)
+                info = {
+                    'query': task.flow.query,
+                    'task': task.uuid,
+                    'uuid': job_uuid,
+                    'location': location,
+                }
+                if priority is not None:
+                    self.res.headers.set('X-lg-priority', str(priority))
+                for chunk in self.stream([info], task.format()):
+                    yield chunk
+                return
+        raise IndexError
+
+class LG__Adapter(_Params, _LG_Tasky):
+    path = ('lg', 'adapter', ADAPTER)
+    offset = 2
+
+    def get_task(self, adapter, query, **kwargs):
+        with self.collection.context(write=False) as ctx:
+            try:
+                jobs = ctx.lg_lite_index.jobs(adapter, query)
+            except KeyError:
+                raise IndexError
+            cursor = jobs.cursor()
+            job_uuid, pri = cursor.next(ctx.txn)
+        while True:
+            try:
+                for x in self.stream_job_task(job_uuid, adapter, priority=pri, **kwargs):
+                    yield x
+                with self.collection.context(write=True) as ctx:
+                    try:
+                        # re-add job w/ it's current priority, which
+                        # could have changed, if it is still queued
+                        jobs = ctx.lg_lite_index.jobs(adapter, query)
+                        jobs.add(job_uuid, priority=jobs[job_uuid])
+                    except KeyError:
+                        pass
+                return
+            except (IndexError, HTTPError):
+                pass
+            with self.collection.context(write=False) as ctx:
+                job_uuid, pri = cursor.next(ctx.txn)
+
+    def next_query(self, adapter):
+        with self.collection.context(write=True) as ctx:
+            try:
+                return ctx.lg_lite_index.queries(adapter).next()
+            except (KeyError, IndexError):
+                pass
+        raise IndexError
+
+    def queries(self, adapter):
+        seen = set()
+        try:
+            query = self.next_query(adapter)
+            while query not in seen:
+                seen.add(query)
+                yield query
+                query = self.next_query(adapter)
+        except IndexError:
+            pass
+
+    def _get_post(self, adapter):
+        data = self.input() or {}
+        params = self.merge_params(input=data,
+            single={'limit': int, 'min_age': int },
+            multi=('query', 'blacklist'))
+
+        queries = set(params.pop('query', [])) or self.queries(adapter)
+
+        try:
+            for query in queries:
+                try:
+                    for x in self.get_task(adapter, query, **params):
+                        yield x
+                    return
+                except IndexError:
+                    pass
+        finally:
+            if not isinstance(queries, set):
+                queries.close()
+
+    get  = _get_post
+    post = _get_post
+
+class LG__Adapter_Job(_Params, Handler):
+    path = ('lg', 'adapter', ADAPTER, UUID)
+    offset = 2
+
+    def post(self, adapter, job_uuid):
+        data = self.input() or {}
+        params = self.merge_params(input=data, single=('query', 'filter'))
+        with self.graph(job_uuid, create=False) as g:
+            with g.transaction(write=True) as txn:
+                count = txn.lg_lite.inject(adapter, **params)
+        return self.dumps({'chains': count}, pretty=True)
+
+class LG__Adapter_Job_Task(Handler):
+    path = ('lg', 'adapter', ADAPTER, UUID, UUID)
+    offset = 2
+
+    def head(self, adapter, job_uuid, task_uuid):
+        with self.graph(job_uuid, create=False) as g:
+            with g.transaction(write=True) as txn:
+                try:
+                    txn.lg_lite.task(adapter, uuid=task_uuid).touch()
+                except KeyError:
+                    raise HTTPError(404, 'task not found: %s' % task_uuid)
+
+    def delete(self, adapter, job_uuid, task_uuid):
+        with self.graph(job_uuid, create=False) as g:
+            with g.transaction(write=True) as txn:
+                try:
+                    txn.lg_lite.task(adapter, uuid=task_uuid).drop()
+                except KeyError:
+                    raise HTTPError(404, 'task not found: %s' % task_uuid)
+
+class LG__Adapter_Job_Task_post(_Params, _Input):
+    path = ('lg', 'adapter', ADAPTER, UUID, UUID)
+    offset = 2
+
+    def post(self, adapter, job_uuid, task_uuid):
+        params = self.input()
+        if params is None:
+            raise HTTPError(400, "Payload required")
+        query = params.pop('query', None)
+        consume = params.pop('consume', True)
+
+        with self.graph(job_uuid, create=False) as g:
+            with g.transaction(write=True) as txn:
+                try:
+                    task = txn.lg_lite.task(adapter, query=query, uuid=task_uuid)
+                except KeyError:
+                    raise HTTPError(404, 'task not found: %s' % task_uuid)
+                self.do_input(txn, job_uuid, data=params)
+                if consume:
+                    task.drop()
+                else:
+                    task.touch()
+
+class LG__Adapter_Job_Task_get(_LG_Tasky):
+    path = ('lg', 'adapter', ADAPTER, UUID, UUID)
+    offset = 2
+
+    def get(self, adapter, job_uuid, task_uuid):
+        try:
+            return self.stream_job_task(job_uuid, adapter, uuid=task_uuid)
+        except KeyError:
+            raise HTTPError(404, 'task not found: %s' % task_uuid)
+
+
 class Server(object):
     def __init__(self, collection_path=None, graph_opts=None, **kwargs):
         classes = (
@@ -1045,6 +1327,14 @@ class Server(object):
             D3_UUID,
             Favicon,
             Static,
+            LG,
+            LG_Config_Job,
+            LG_Config_Job_Adapter,
+            LG__Adapter,
+            LG__Adapter_Job,
+            LG__Adapter_Job_Task,
+            LG__Adapter_Job_Task_post,
+            LG__Adapter_Job_Task_get,
         )
 
         global lock

@@ -1,6 +1,8 @@
 import os
 import tempfile
+import time
 import unittest
+import uuid
 
 from LemonGraph import Graph, Serializer, dirlist, Query
 
@@ -35,7 +37,7 @@ class TestGraph(unittest.TestCase):
     def setUp(self):
         fd, path = tempfile.mkstemp()
         os.close(fd)
-        self.g = Graph(path)
+        self.g = Graph(path, nosync=True, nometasync=True)
 
     def tearDown(self):
         self.g.delete()
@@ -167,6 +169,43 @@ class TestGraph(unittest.TestCase):
 
             count = sum(1 for x in b)
             self.assertTrue(1 == count)
+            txn.abort()
+
+        with self.g.transaction(write=True) as txn:
+            b = txn.kv('foo')
+            for k in ('a', 'b1', 'b2', 'c'):
+                b[k] = 1
+            b.clear(pfx='b')
+            self.assertEqual(tuple(b.iterkeys()), ('a','c'))
+            b.clear()
+            self.assertEqual(tuple(b.iterkeys()), ())
+            txn.abort()
+
+    def test_kv_next(self):
+        with self.g.transaction(write=True) as txn:
+            b = txn.kv('foo')
+            for i, k in enumerate(('a', 'b', 'c')):
+                b[k] = str(i)
+
+        with self.g.transaction(write=True) as txn:
+            b = txn.kv('foo')
+            ret = b.next()
+            self.assertEqual(ret, ('a', '0'))
+
+        with self.g.transaction(write=True) as txn:
+            b = txn.kv('foo')
+            ret = b.next()
+            self.assertEqual(ret, ('b', '1'))
+
+        with self.g.transaction(write=True) as txn:
+            b = txn.kv('foo')
+            ret = b.next()
+            self.assertEqual(ret, ('c', '2'))
+
+        with self.g.transaction(write=True) as txn:
+            b = txn.kv('foo')
+            ret = b.next()
+            self.assertEqual(ret, ('a', '0'))
 
     def test_fifo(self):
         with self.g.transaction(write=True) as txn:
@@ -181,6 +220,38 @@ class TestGraph(unittest.TestCase):
             out = f.pop(4)
             self.assertEqual(out, (4, 5, 6))
             self.assertEqual(len(f), 0)
+
+    def test_pqueue(self):
+        with self.g.transaction(write=True) as txn:
+            pq = txn.pqueue('foo')
+            pq.add('c', priority=2)
+            pq.add('d', priority=1)
+            pq.add('a', priority=4)
+            pq.add('e', priority=1)
+            pq.add('b', priority=3)
+
+            ret = tuple(iter(pq))
+            self.assertEqual(ret, tuple('abcde'))
+
+            pq.add('d', priority=1)
+
+            ret = tuple(iter(pq))
+            self.assertEqual(ret, tuple('abced'))
+
+            pq.add('d', priority=4)
+
+            ret = tuple(iter(pq))
+            self.assertEqual(ret, tuple('adbce'))
+
+            pq.remove('b')
+
+            ret = tuple(iter(pq))
+            self.assertEqual(ret, tuple('adce'))
+
+            pq.clear()
+
+            ret = tuple(iter(pq))
+            self.assertEqual(ret, tuple())
 
     def test_nested(self):
         with self.g.transaction(write=True) as t0:
@@ -350,12 +421,42 @@ class TestSerializers(unittest.TestCase):
             self.assertEqual(s.encode(x), y)
             self.assertEqual(s.decode(y), z)
 
+    def test_vuints(self):
+        s = Serializer.vuints()
+        a = ((0, 255), (256, (1 << 64) - 1), (1,))
+        b = (b"\x00\x01\xff",
+             b"\x02\x01\x00\x08\xff\xff\xff\xff\xff\xff\xff\xff",
+             b"\x01\x01",
+             )
+        c = ((0, 255), (256, (1 << 64) - 1), (1,))
+        for x, y, z in zip(a, b, c):
+            self.assertEqual(s.encode(x), y)
+            self.assertEqual(s.decode(y), z)
+
+    def test_uints2d(self):
+        s = Serializer.uints2d()
+        records = (
+            (1, 2, 3),
+            (4, 5, 6),
+        )
+        b = s.encode(records)
+        out = s.decode(b)
+        self.assertEqual(records, out)
+
     def test_msgpack(self):
         s = Serializer.msgpack()
         a = { 'foo': 'bar', u'foo\u2020': u'bar\u2020' }
         b = s.encode(a)
         c = s.decode(b)
         self.assertEqual(a, c)
+
+    def test_uuid(self):
+        s = Serializer.uuid()
+        u = uuid.uuid1()
+        u_str = str(u)
+        u_bin = u.bytes
+        self.assertEqual(u_str, s.decode(u_bin))
+        self.assertEqual(s.encode(u_str), u_bin)
 
 class TestDL(unittest.TestCase):
     def test_dirlist(self):

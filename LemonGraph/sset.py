@@ -24,8 +24,8 @@ class SSet(object):
         return bool(lib.kv_put(self._kv, value, len(value), b'', 0))
 
     def remove(self, value):
-        value = self.serialize_value.encode(value)
-        r = lib.kv_del(self._kv, value, len(value))
+        evalue = self.serialize_value.encode(value)
+        r = lib.kv_del(self._kv, evalue, len(evalue))
         if not r:
             raise KeyError(value)
 
@@ -66,11 +66,42 @@ class SSet(object):
             lib.kv_deref(self._kv)
             self._kv = None
 
+    def first(self):
+        klen = ffi.new('size_t *')
+        key = lib.kv_first_key(self._kv, klen)
+        if key == ffi.NULL:
+            raise IndexError()
+        return self.serialize_value.decode(ffi.buffer(key,  klen[0])[:])
+
     @property
     def empty(self):
-        for x in self:
+        try:
+            self.first()
             return False
-        return True
+        except IndexError:
+            return True
+
+    def clear(self, pfx=None):
+        if pfx is None:
+            return bool(lib.kv_clear(self._kv))
+        pfx = wire.encode(pfx)
+        return bool(lib.kv_clear_pfx(self._kv, pfx, len(pfx)));
+
+    def next(self, reset=False):
+        if reset:
+            lib.kv_next_reset(self._kv)
+
+        key  = ffi.new('void **')
+        data = ffi.new('void **')
+        klen = ffi.new('size_t *')
+        dlen = ffi.new('size_t *')
+
+        if lib.kv_next(self._kv, key, klen, data, dlen):
+            return self.serialize_value.decode(ffi.buffer(key[0],  klen[0])[:])
+        raise IndexError()
+
+    def next_reset(self):
+        lib.kv_next_reset(self._kv)
 
 class SSetIterator(object):
     def __init__(self, kv, handler, pfx=None):

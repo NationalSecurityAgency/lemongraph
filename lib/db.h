@@ -178,11 +178,13 @@ int cursor_get(cursor_t cursor, buffer_t *key, buffer_t *data, db_cursor_op op);
 int cursor_put(cursor_t cursor, buffer_t *key, buffer_t *data, unsigned int flags);
 int cursor_del(cursor_t cursor, unsigned int flags);
 int cursor_count(cursor_t cursor, size_t *count);
+int cursor_first_key(cursor_t cursor, buffer_t *key, uint8_t *pfx, const unsigned int pfxlen);
 int cursor_last_key(cursor_t cursor, buffer_t *key, uint8_t *pfx, const unsigned int pfxlen);
 void cursor_close(cursor_t cursor);
 
 int txn_iter_new(iter_t *iter, txn_t txn, int dbi, void *pfx, const unsigned int len);
 int txn_iter_init(iter_t iter, txn_t txn, int dbi, void *pfx, const unsigned int len);
+int iter_seek(iter_t iter, void *pfx, const unsigned int len);
 int iter_next(iter_t iter);
 int iter_next_key(iter_t iter);
 void iter_close(iter_t iter);
