@@ -15,9 +15,10 @@
 		{
 			"seed": true,  // mark any referenced nodes/edges as seeds (nodes are assigned depth=0)
 			"meta": {},    // same structure as POST /graph, merges graph-level kv pairs
-			'chains': [],  // list of node[->edge->node]* object chains
-			'nodes': [],   // list of nodes
-			'edges': [],   // list of edges
+			"chains": [],  // list of node[->edge->node]* object chains
+			"nodes": [],   // list of nodes
+			"edges": [],   // list of edges
+			"adapters": {} // LG-Lite adapters - see /lg/config/{job_uuid} endpoint in LG_LITE.md
 		}
 		all node objects must have:
 			a) type/value combo
