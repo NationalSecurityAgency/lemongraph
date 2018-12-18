@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y -q python3-dateutil python3-six python3
 FROM base AS build
 
 RUN apt-get update
-RUN apt-get install -y -q python3-pip zlib1g-dev python3-dev python3-cffi curl git
+RUN apt-get install -y -q zlib1g-dev python3-dev python3-pip curl git
 
 COPY . /lemongraph
 WORKDIR /lemongraph
