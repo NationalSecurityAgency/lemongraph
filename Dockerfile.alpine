@@ -22,4 +22,4 @@ COPY --from=build /usr/lib/python3.6/site-packages /usr/lib/python3.6/site-packa
 
 EXPOSE 8000
 WORKDIR /data
-ENTRYPOINT [ "python3", "-mLemonGraph.server", "-i", "0.0.0.0" ]
+ENTRYPOINT [ "python3", "-mLemonGraph.server", "-i", "0.0.0.0", "-n" ]

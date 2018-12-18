@@ -29,6 +29,7 @@ def usage(msg=None, fh=sys.stderr):
     print('  -b <buflen>         (1048576)', file=fh)
     print('  -s                  enable nosync for graph dbs', file=fh)
     print('  -m                  enable nometasync for graph dbs', file=fh)
+    print('  -n                  enable notls', file=fh)
     print('  -r                  rebuild index', file=fh)
     print('  -h                  print this help and exit', file=fh)
     if msg is not None:
@@ -87,7 +88,7 @@ def update_depth_cost():
 def main():
     levels = ('NOTSET', 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')
     try:
-        opts, args = getopt(sys.argv[1:], 'i:p:d:l:w:t:b:smrh')
+        opts, args = getopt(sys.argv[1:], 'i:p:d:l:w:t:b:smnrh')
     except GetoptError as err:
         usage(msg=str(err))
     if len(args) > 1:
@@ -101,6 +102,7 @@ def main():
     poll = 250
     nosync = False
     nometasync = False
+    notls = False
     rebuild = False
     path = 'graphs'
     workers = -1
@@ -123,6 +125,8 @@ def main():
                 nosync = True
             elif o == '-m':
                 nometasync = True
+            elif o == '-n':
+                notls = True
             elif o == '-r':
                 rebuild = True
             elif o == '-l':
@@ -170,11 +174,11 @@ def main():
 
     # initialize the collection up front (which will re-create if missing)
     # before we turn on the web server
-    col = Collection(path, create=True, rebuild=rebuild, graph_opts=graph_opts)
+    col = Collection(path, create=True, rebuild=rebuild, graph_opts=graph_opts, notls=notls)
     col.close()
 
     def _syncd():
-        collection = Collection(path, graph_opts=graph_opts, nosync=True, nometasync=False)
+        collection = Collection(path, graph_opts=graph_opts, nosync=True, nometasync=False, notls=notls)
         try:
             collection.daemon(poll=poll)
         except Graceful:
@@ -182,6 +186,6 @@ def main():
         finally:
             collection.close()
 
-    Server(collection_path=path, graph_opts=graph_opts, extra_procs={'syncd': _syncd}, host=ip, port=port, spawn=workers, timeout=timeout, buflen=buflen)
+    Server(collection_path=path, graph_opts=graph_opts, notls=notls, extra_procs={'syncd': _syncd}, host=ip, port=port, spawn=workers, timeout=timeout, buflen=buflen)
 
 main()

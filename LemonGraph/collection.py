@@ -357,6 +357,7 @@ class Collection(object):
         self.dir = os.path.abspath(dir)
         idx = "%s.idx" % self.dir
         self.graph_opts = {} if graph_opts is None else graph_opts
+        self.notls = kwargs.get('notls', False)
         kwargs['serialize_property_value'] = self.msgpack
         kwargs['create'] = create
         self.db = Graph(idx, **kwargs)
@@ -462,6 +463,8 @@ class Collection(object):
                 kwargs[k] = v
         if hook:
             kwargs['hooks'] = CollectionHooks(uuid, self)
+        if 'notls' not in kwargs:
+            kwargs['notls'] = self.notls
         try:
             g = Graph(self.graph_path(uuid), **kwargs)
         except:
