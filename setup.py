@@ -111,7 +111,7 @@ if __name__ == "__main__":
         url='https://github.com/NationalSecurityAgency/lemongraph',
         version='0.10.0',
         description='LemonGraph Database',
-        packages=['LemonGraph'],
+        packages=['LemonGraph', 'LemonGraph.server'],
         package_data={'LemonGraph': ['data/*']},
         install_requires=reqs,
         **keywords_with_side_effects(
