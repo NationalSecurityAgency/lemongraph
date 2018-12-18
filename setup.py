@@ -96,6 +96,7 @@ reqs = [
     'msgpack>=0.6,<0.7',
     'pysigset>=0.2,<0.4',
     'python-dateutil>=1.4,<2.7',
+    'setuptools',
     'six',
 ]
 if platform.python_implementation() == 'CPython':
