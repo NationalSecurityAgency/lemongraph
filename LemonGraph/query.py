@@ -148,13 +148,17 @@ class Query(object):
 
         self.handlers = self.cache[('h',) + self.patterns] = handlers
 
-    def _adhoc(self, txn, stop=0):
+    def _adhoc(self, txn, stop=0, snap=False):
         for p_idx, c in enumerate(self.compiled):
             if c is None:
                 continue
             ctx = MatchCTX(c)
             p = self.patterns[p_idx]
-            for seed in c.seeds(txn, beforeID=(stop+1) if stop else None):
+            if snap:
+                beforeID = txn._snap(stop)
+            else:
+                beforeID = (stop + 1) if stop else None
+            for seed in c.seeds(txn, beforeID=beforeID):
                 yield (p, ctx.matches(seed, idx=c.best))
 
     def validate(self, *chains):
@@ -190,22 +194,25 @@ class Query(object):
             if scanner(entry):
                 return
             try:
-                for x in handlers[entry.code](entry):
-                    yield x
+                for target, tocs in handlers[entry.code](entry):
+                    yield entry.ID, target, tocs
             except KeyError:
                 pass
 
-    def _streaming(self, txn, **kwargs):
+    def _streaming(self, txn, snap=False, **kwargs):
         self._gen_handlers()
         ctxs = {}
-        for target, tocs in self._starts(txn, **kwargs):
+        beforeID = None
+        for ID, target, tocs in self._starts(txn, **kwargs):
+            if snap:
+                beforeID = txn._snap(ID)
             for p_idx, idx in tocs:
                 p = self.patterns[p_idx]
                 try:
                     ctx = ctxs[p]
                 except KeyError:
                     ctx = ctxs[p] = MatchCTX(self.compiled[p_idx])
-                yield (p, ctx.matches(target, idx=idx))
+                yield (p, ctx.matches(target, idx=idx, beforeID=beforeID))
 
     def _exec(self, pat_matches):
         for p, matches in pat_matches:

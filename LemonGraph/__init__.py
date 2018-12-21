@@ -635,6 +635,9 @@ class Transaction(GraphItem):
     def priority(self, val):
         self['priority'] = sorted((0, int(val), 255))[1]
 
+    def _snap(self, ID):
+        return lib.graph_snap_id(self._txn, ID)
+
 
 class NodeEdgeProperty(GraphItem):
     _lib_byID = None

@@ -2314,6 +2314,35 @@ done:
 	return count;
 }
 
+// given logID, find txn that it was a part of
+// return beforeID that would include the entire txn
+logID_t graph_snap_id(graph_txn_t txn, logID_t id){
+	logID_t beforeID = txn->next_logID;
+	uint8_t kbuf[esizeof(txnID_t) + esizeof(logID_t) + esizeof(logID_t)];
+	buffer_t data, key = { 0, kbuf };
+	struct txn_info_t info;
+
+	// encode magic to query by logID
+	encode(0, kbuf, key.size);
+	encode(1, kbuf, key.size);
+	encode(id, kbuf, key.size);
+
+	struct cursor_t c;
+	int r = txn_cursor_init(&c, (txn_t)txn, DB_TXNLOG);
+	assert(DB_SUCCESS == r);
+
+	r = cursor_get(&c, &key, &data, DB_SET_KEY);
+	if(DB_SUCCESS == r){
+		int i = 0;
+		decode(info.id, key.data, i);
+		decode(info.start, key.data, i);
+		decode(info.count, key.data, i);
+		beforeID = info.start + info.count;
+	}
+	cursor_close(&c);
+	return beforeID;
+}
+
 char *__blob(graph_txn_t txn, uint64_t id, size_t *len, int db1){
 	assert(id);
 	buffer_t key = { sizeof(id), &id }, data;

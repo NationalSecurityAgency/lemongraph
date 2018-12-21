@@ -339,7 +339,7 @@ class Flow(object):
                     rec[0] = entry.ID
                 return full
 
-            for chain in self.txn.query(self.qfull, start=self._pos, scanner=scanner):
+            for chain in self.txn.query(self.qfull, start=self._pos, scanner=scanner, snap=True):
                 rec[1::] = tuple(x.ID for x in chain)
                 if full:
                     self.queue.push(rec)

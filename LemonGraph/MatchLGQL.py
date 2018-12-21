@@ -630,7 +630,7 @@ class MatchCTX(object):
     def pop(self, delta):
         self.chain.pop() if 1 == delta else self.chain.popleft()
 
-    def matches(self, target, idx=0):
+    def matches(self, target, idx=0, beforeID=None):
         self.chain.clear()
         self.seen.clear()
 
@@ -656,14 +656,30 @@ class MatchCTX(object):
             for _ in self._recurse(target, idx, deltas[0], stop[0], self.match.matches[idx]['uniq']):
                 # do stage two
                 for _ in self._next(target, link, idx, deltas[1], stop[1]):
-                    yield self.result()
+                    if beforeID is None:
+                        yield self.result(self.chain)
+                    else:
+                        snapped = tuple(x.clone(beforeID=beforeID) for x in self.chain)
+                        if self.validate(snapped):
+                            yield self.result(snapped)
         else:
             # we only have a stage one
             for _ in self._recurse(target, idx, deltas[0], stop[0], self.match.matches[idx]['uniq']):
-                yield self.result()
+                if beforeID is None:
+                    yield self.result(self.chain)
+                else:
+                    snapped = tuple(x.clone(beforeID=beforeID) for x in self.chain)
+                    if self.validate(snapped):
+                        yield self.result(snapped)
 
-    def result(self):
-        return tuple(self.chain[i] for i in self.match.keep)
+    def validate(self, chain):
+        for idx, target in enumerate(chain):
+            if not self.match.is_valid(target, idx=idx):
+                return False
+        return True
+
+    def result(self, chain):
+        return tuple(chain[i] for i in self.match.keep)
 
     def _next(self, target, dir, idx, delta, stop):
         idx += delta

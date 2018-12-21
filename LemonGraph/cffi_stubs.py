@@ -126,6 +126,9 @@ logID_t graph_node_updateID(graph_txn_t txn, node_t n, logID_t beforeID);
 logID_t graph_edge_updateID(graph_txn_t txn, edge_t e, logID_t beforeID);
 logID_t graph_prop_updateID(graph_txn_t txn, prop_t p, logID_t beforeID);
 
+// returns beforeID for entire transaction that given id was written in
+logID_t graph_snap_id(graph_txn_t txn, logID_t id);
+
 // get properties
 prop_t graph_get(graph_txn_t txn, void *key, size_t klen, logID_t beforeID);
 prop_t graph_node_get(graph_txn_t txn, node_t node, void *key, size_t klen, logID_t beforeID);

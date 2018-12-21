@@ -564,6 +564,10 @@ class Graph_UUID(_Input, _Streamy):
         return s
 
     @property
+    def snap(self):
+        return 'snap' in self.params
+
+    @property
     def limit(self):
         return int(self.param('limit', 0))
 
@@ -602,7 +606,7 @@ class Graph_UUID(_Input, _Streamy):
 
         qtoc = dict((q, i) for i, q in enumerate(uniq))
         try:
-            gen = txn.mquery(uniq, limit=self.limit, start=self.start, stop=self.stop)
+            gen = txn.mquery(uniq, limit=self.limit, start=self.start, stop=self.stop, snap=self.snap)
         except QuerySyntaxError as e:
             raise HTTPError(400, repr(e))
         # fixme - should we try to make edges use the format_edge foo here?
