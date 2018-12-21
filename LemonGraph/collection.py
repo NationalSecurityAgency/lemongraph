@@ -567,7 +567,7 @@ class Collection(object):
                     try:
                         log.debug("syncing")
                         with self.context(write=True) as ctx:
-                            uuids = ctx.updatedDB.pop(n=maxopen)
+                            uuids = ctx.updatedDB.pop(maxopen)
                             for uuid in uuids:
                                 age = ctx.updatedDB_idx.pop(uuid)
                                 try:

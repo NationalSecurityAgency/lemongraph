@@ -1122,38 +1122,117 @@ int kv_clear_pfx(kv_t kv, uint8_t *pfx, unsigned int len){
 	return 1;
 }
 
-/*
-int kv_clear_pfx(kv_t kv, uint8_t *pfx, unsigned int len){
-	kv_iter_t iter = kv_iter_pfx(kv, pfx, len);
-	if(!iter)
-		return 0;
-
-	uint8_t buf[kv->klen + len];
-	memcpy(buf, kv->kbuf, kv->klen);
-	memcpy(buf + kv->klen, pfx, len);
-
-	iter_t it = (iter_t)iter;
-	while(iter_next_key(it) == DB_SUCCESS){
-		int r = cursor_del((cursor_t)it, 0);
-		assert(DB_SUCCESS == r);
-		// fixme - is this necessary?
-		iter_seek(it, buf, kv->klen + len);
-	}
-	kv_iter_close(iter);
-	return 1;
-}*/
-
 int kv_clear(kv_t kv){
 	return kv_clear_pfx(kv, NULL, 0);
 }
 
-int kv_fifo_push(kv_t kv, void *data, size_t *len, unsigned int count){
-	// copy last key & incr or init
-	// for i in range(0, count):
-	//	append(key, data[i], len[i])
-	//	incr(key)
+int kv_fifo_push_n(kv_t kv, void **datas, size_t *lens, const int count){
+	struct cursor_t cursor;
+	int r = txn_cursor_init(&cursor, (txn_t)kv->txn, DB_KV);
+	assert(DB_SUCCESS == r);
+	r = cursor_last_key(&cursor, &kv->key, kv->kbuf, kv->klen);
+	if(DB_NOTFOUND == r){
+		r = DB_SUCCESS;
+		kv->key.size = kv->klen + ctr_init(kv->kbuf + kv->klen);
+	}else if(DB_SUCCESS == r){
+		memcpy(kv->kbuf, kv->key.data, kv->key.size);
+		kv->key.size = kv->klen + ctr_inc(kv->kbuf + kv->klen);
+	}
+	kv->key.data = kv->kbuf;
 
-	return 0;
+	const int resolve = kv->flags & (LG_KV_MAP_KEYS|LG_KV_MAP_DATA);
+	unsigned int i;
+	strID_t id;
+	uint8_t edata[esizeof(id)];
+	for(i = 0; DB_SUCCESS == r && i < count; i++){
+		if(resolve){
+			if(!_string_resolve(kv->txn, &id, datas[i], lens[i], 0)){
+				r = DB_NOTFOUND;
+				goto done;
+			}
+			kv->data.size = 0;
+			kv->data.data = edata;
+			encode(id, edata, kv->data.size);
+		}else{
+			kv->data.data = datas[i];
+			kv->data.size = lens[i];
+		}
+		if(i)
+			kv->key.size = kv->klen + ctr_inc(kv->kbuf + kv->klen);
+		r = cursor_put(&cursor, &kv->key, &kv->data, 0);
+	}
+	if(DB_SUCCESS == r)
+		r = i;
+done:
+	cursor_close(&cursor);
+	return r;
+}
+
+int kv_fifo_push(kv_t kv, void *data, size_t len){
+	return kv_fifo_push_n(kv, &data, &len, 1);
+}
+
+int kv_fifo_peek_n(kv_t kv, void **datas, size_t *lens, const int count){
+	struct cursor_t cursor;
+	int i, r = txn_cursor_init(&cursor, (txn_t)kv->txn, DB_KV);
+	assert(DB_SUCCESS == r);
+	const int resolve = kv->flags & (LG_KV_MAP_KEYS|LG_KV_MAP_DATA);
+	r = cursor_first_key(&cursor, &kv->key, kv->kbuf, kv->klen);
+	for(i = 0; DB_SUCCESS == r && i < count; i++){
+		r = cursor_get(&cursor, &kv->key, &kv->data, DB_SET_KEY);
+		assert(DB_SUCCESS == r);
+		if(resolve){
+			datas[i] = graph_string_enc(kv->txn, kv->data.data, &lens[i]);
+		}else{
+			datas[i] = kv->data.data;
+			lens[i] = kv->data.size;
+		}
+		r = cursor_get(&cursor, &kv->key, NULL, DB_NEXT);
+		if(DB_SUCCESS != r || kv->key.size < kv->klen || memcmp(kv->key.data, kv->kbuf, kv->klen))
+			r = DB_NOTFOUND;
+	}
+	if(DB_SUCCESS == r || DB_NOTFOUND == r)
+		r = i;
+	cursor_close(&cursor);
+	return r;
+}
+
+int kv_fifo_peek(kv_t kv, void **data, size_t *size){
+	return kv_fifo_peek_n(kv, data, size, 1);
+}
+
+int kv_fifo_delete(kv_t kv, const int count){
+	struct cursor_t cursor;
+	int i, r = txn_cursor_init(&cursor, (txn_t)kv->txn, DB_KV);
+	assert(DB_SUCCESS == r);
+	r = cursor_first_key(&cursor, &kv->key, kv->kbuf, kv->klen);
+	for(i = 0; DB_SUCCESS == r && i < count; i++){
+		r = cursor_del(&cursor, 0);
+		assert(DB_SUCCESS == r);
+		r = cursor_first_key(&cursor, &kv->key, kv->kbuf, kv->klen);
+	}
+	if(DB_SUCCESS == r || DB_NOTFOUND == r)
+		r = i;
+	cursor_close(&cursor);
+	return r;
+}
+
+int kv_fifo_len(kv_t kv, uint64_t *len){
+	struct cursor_t cursor;
+	int r = txn_cursor_init(&cursor, (txn_t)kv->txn, DB_KV);
+	assert(DB_SUCCESS == r);
+	buffer_t key2;
+	r = cursor_first_key(&cursor, &kv->key, kv->kbuf, kv->klen);
+	if(DB_SUCCESS == r){
+		int r2 = cursor_last_key(&cursor, &key2, kv->kbuf, kv->klen);
+		assert(DB_SUCCESS == r2);
+		*len = 1 + ctr_delta(key2.data + kv->klen, kv->key.data + kv->klen);
+	}else if(DB_NOTFOUND == r){
+		r = DB_SUCCESS;
+		*len = 0;
+	}
+	cursor_close(&cursor);
+	return r;
 }
 
 // priority queues on top of kv

@@ -208,6 +208,14 @@ int kv_iter_next(kv_iter_t iter, void **key, size_t *klen, void **data, size_t *
 int kv_iter_seek(kv_iter_t iter, void *key, size_t klen);
 void kv_iter_close(kv_iter_t iter);
 
+// fifos
+int kv_fifo_push_n(kv_t kv, void **datas, size_t *lens, const int count);
+int kv_fifo_push(kv_t kv, void *data, size_t len);
+int kv_fifo_peek_n(kv_t kv, void **datas, size_t *lens, const int count);
+int kv_fifo_peek(kv_t kv, void **data, size_t *size);
+int kv_fifo_delete(kv_t kv, const int count);
+int kv_fifo_len(kv_t kv, uint64_t *len);
+
 // priority queues
 int kv_pq_add(kv_t kv, void *key, size_t klen, uint8_t priority);
 int kv_pq_get(kv_t kv, void *key, size_t klen);
