@@ -565,7 +565,7 @@ class Graph_UUID(_Input, _Streamy):
 
     @property
     def snap(self):
-        return 'snap' in self.params
+        return self.param('snap') not in ('0', 'no', 'false')
 
     @property
     def limit(self):
