@@ -1,12 +1,19 @@
 from __future__ import print_function
+
+import argparse
 import requests
 import time
 
-lg = 'http://localhost:8000'
+parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('-u', '--url', help='LemonGraph REST service base url', default='http://localhost:8000')
+parser.add_argument('-l', '--limit', help='desired number of records per task', type=int, default=200)
+
+args = parser.parse_args()
+
 while True:
     # fetch task json - we are just scanning for nodes
     try:
-        r = requests.get(lg + '/lg/adapter/FOO', params={ 'query': 'n()' })
+        r = requests.get(args.url + '/lg/adapter/FOO', params={ 'query': 'n()', 'limit': args.limit })
     except requests.exceptions.ConnectionError:
         time.sleep(1)
         continue
@@ -38,6 +45,6 @@ while True:
     ret = None
     while ret is None:
         try:
-            ret = requests.post(lg + meta['location'], json={'nodes': nodes})
+            ret = requests.post(args.url + meta['location'], json={'nodes': nodes})
         except requests.exceptions.ConnectionError:
             time.sleep(1)
