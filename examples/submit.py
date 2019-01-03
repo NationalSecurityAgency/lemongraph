@@ -1,16 +1,19 @@
 from __future__ import print_function
+
+import argparse
 import requests
 import time
 import sys
 
-lg = 'http://localhost:8000'
+parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('-u', '--url', help='LemonGraph REST service base url', default='http://localhost:8000')
+parser.add_argument('-p', '--priority', help='job priority', type=int, default=100)
+parser.add_argument('count', help='job count', type=int, nargs='?', default=1)
 
-try:
-    count = int(sys.argv[-1])
-except:
-    count = 1
+args = parser.parse_args()
 
 job = {
+    "meta": { "priority": args.priority },
     "adapters":{
         "FOO": { "query": "n()" },
         "BAR": { "query": "n(foo)" }
@@ -30,10 +33,10 @@ job = {
 }
 
 i = 0
-while i < count:
+while i < args.count:
     # submit new job
     try:
-        r = requests.post(lg + '/graph', json=job, headers={ 'x-please-pipeline': "true" })
+        r = requests.post(args.url + '/graph', json=job, headers={ 'x-please-pipeline': 'true' })
     except requests.exceptions.ConnectionError:
         time.sleep(1)
         continue
