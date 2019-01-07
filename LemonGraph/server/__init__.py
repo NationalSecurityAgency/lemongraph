@@ -1013,7 +1013,7 @@ class Static(Handler):
         try:
             body = self.cache[resource]
         except KeyError:
-            body = pkg_resources.resource_string(__name__, 'data/%s' % resource)
+            body = pkg_resources.resource_string(__name__, '../data/%s' % resource)
             #self.cache[resource] = body
 
         extension = os.path.splitext(resource)[1]
