@@ -6,12 +6,14 @@ RUN apk update && apk add --no-cache py3-dateutil py3-msgpack py3-six py3-setupt
 
 FROM base AS build
 
-RUN apk add gcc musl-dev libffi-dev zlib-dev python3-dev py3-pip curl git 
+RUN apk add gcc musl-dev libffi-dev zlib-dev python3-dev py3-pip curl git make
 RUN pip3 install wheel
 
 COPY . /lemongraph
 WORKDIR /lemongraph
-RUN python3 setup.py bdist_wheel
+RUN make deps PYTHON=python3
+RUN patch -N deps/lmdb/libraries/liblmdb/mdb.c < broken-musl-tls.patch
+RUN CPPFLAGS=-DBROKEN_MUSL_TLS python3 setup.py bdist_wheel
 RUN pip3 install dist/*.whl
 
 
@@ -22,4 +24,4 @@ COPY --from=build /usr/lib/python3.6/site-packages /usr/lib/python3.6/site-packa
 
 EXPOSE 8000
 WORKDIR /data
-ENTRYPOINT [ "python3", "-mLemonGraph.server", "-i", "0.0.0.0", "-n" ]
+ENTRYPOINT [ "python3", "-mLemonGraph.server", "-i", "0.0.0.0" ]

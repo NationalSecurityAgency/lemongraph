@@ -1,0 +1,18 @@
+diff --git i/libraries/liblmdb/mdb.c w/libraries/liblmdb/mdb.c
+index a487e15..9c2cc7f 100644
+--- i/libraries/liblmdb/mdb.c
++++ w/libraries/liblmdb/mdb.c
+@@ -5139,6 +5139,13 @@ mdb_env_setup_locks(MDB_env *env, MDB_name *fname, int mode, int *excl)
+ 
+ 	if (!(env->me_flags & MDB_NOTLS)) {
+ 		rc = pthread_key_create(&env->me_txkey, mdb_env_reader_dest);
++#ifdef BROKEN_MUSL_TLS
++		/*
++		 * the pthread_key_create() impl in musl (used by Alpine Linux)
++		 * does not necessarily zero out newly created keys
++		 */
++		rc = rc || pthread_setspecific(env->me_txkey, NULL);
++#endif
+ 		if (rc)
+ 			goto fail;
+ 		env->me_flags |= MDB_ENV_TXKEY;
