@@ -559,11 +559,9 @@ class MatchLGQL(object):
                 if seed:
                     yield seed
         elif rank in (3,):
-            vals = accel['value']
-            for t in accel['type']:
-                for seed in txn.edges(type=t, beforeID=beforeID):
-                    if seed.value in vals:
-                        yield seed
+            for t,v in itertools.product(accel['type'], accel['value']):
+                for seed in txn.edges(type=t, value=v, beforeID=beforeID):
+                    yield seed
         elif rank in (4,5):
             for t in accel['type']:
                 for seed in funcs[rank % 2](type=t, beforeID=beforeID):

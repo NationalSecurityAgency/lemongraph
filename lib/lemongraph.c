@@ -1863,6 +1863,18 @@ graph_iter_t graph_edges_type(graph_txn_t txn, void *type, size_t tlen, logID_t 
 	return _graph_nodes_edges_type(txn, DB_EDGE_IDX, type, tlen, beforeID);
 }
 
+graph_iter_t graph_edges_type_value(graph_txn_t txn, void *type, size_t tlen, void *value, size_t vlen, logID_t beforeID){
+	strID_t typeID, valID;
+	uint8_t kbuf[esizeof(typeID) + esizeof(valID)];
+	size_t klen = 0;
+	graph_iter_t iter = NULL;
+	if(graph_string_lookup(txn, &typeID, type, tlen) && graph_string_lookup(txn, &valID, value, vlen)){
+		encode(typeID, kbuf, klen);
+		encode(valID, kbuf, klen);
+		iter = graph_iter_new(txn, DB_EDGE_IDX, kbuf, klen, beforeID);
+	}
+	return iter;
+}
 
 graph_iter_t graph_node_edges_in(graph_txn_t txn, node_t node, logID_t beforeID){
 	return _graph_entry_idx(txn, DB_TGTNODE_IDX, node->id, beforeID);

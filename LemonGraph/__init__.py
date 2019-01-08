@@ -453,15 +453,26 @@ class Transaction(GraphItem):
 
     # return edges iterator, optionally for a specific type
     def edges(self, **kwargs):
-        by_type = bool('type' in kwargs)
-        type = kwargs.pop('type', None)
+        by_type = by_type_value = False
+        try:
+            type = kwargs.pop('type')
+            by_type = True
+            value = kwargs.pop('value')
+            by_type_value = True
+        except KeyError:
+            pass
+
         beforeID = kwargs.pop('beforeID', None)
         if kwargs:
             raise TypeError('got an unexpected keyword argument[s]: {}'.kwargs.keys())
 
         if by_type:
             type = self.serialize_edge_type.encode(type)
-            ret = Iterator(self, lib.graph_edges_type, lib.iter_next_edge, args=(type, len(type)), beforeID=self.b4ID(beforeID))
+            if by_type_value:
+                value = self.serialize_edge_value.encode(value)
+                ret = Iterator(self, lib.graph_edges_type_value, lib.iter_next_edge, args=(type, len(type), value, len(value)), beforeID=self.b4ID(beforeID))
+            else:
+                ret = Iterator(self, lib.graph_edges_type, lib.iter_next_edge, args=(type, len(type)), beforeID=self.b4ID(beforeID))
         else:
             ret = Iterator(self, lib.graph_edges, lib.iter_next_edge, beforeID=self.b4ID(beforeID))
         return ret

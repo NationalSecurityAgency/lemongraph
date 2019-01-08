@@ -148,6 +148,7 @@ graph_iter_t graph_nodes(graph_txn_t txn, logID_t beforeID);
 graph_iter_t graph_edges(graph_txn_t txn, logID_t beforeID);
 graph_iter_t graph_nodes_type(graph_txn_t txn, void *type, size_t tlen, logID_t beforeID);
 graph_iter_t graph_edges_type(graph_txn_t txn, void *type, size_t tlen, logID_t beforeID);
+graph_iter_t graph_edges_type_value(graph_txn_t txn, void *type, size_t tlen, void *value, size_t vlen, logID_t beforeID);
 graph_iter_t graph_node_edges_in(graph_txn_t txn, node_t node, logID_t beforeID);
 graph_iter_t graph_node_edges_out(graph_txn_t txn, node_t node, logID_t beforeID);
 graph_iter_t graph_node_edges(graph_txn_t txn, node_t node, logID_t beforeID);
