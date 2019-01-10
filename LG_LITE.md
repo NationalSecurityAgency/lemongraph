@@ -41,9 +41,6 @@ LG Lite extends LemonGraph and continues its disposable-central-index theme - no
 	* task will be consumed (deleted) unless otherwise specified
 	* updates task timestamp unless consumed
 
-* can touch tasks
-	* keeps them from being re-issued prematurely, if minimum age is used above
-
 ## Jobs
 
 Jobs themselves are created/updated/deleted via the existing `/graph` endpoint, and:
