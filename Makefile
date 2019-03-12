@@ -15,8 +15,9 @@ liblemongraph.so: LDFLAGS=-pthread
 liblemongraph.so: LDLIBS=-lz
 
 clean:
-	@echo $(wildcard *.a *.so *.o *.pyc LemonGraph/*.pyc LemonGraph/*/*.pyc LemonGraph/*.so MANIFEST) | gxargs --no-run-if-empty rm -v
-	@echo $(wildcard .eggs build dist LemonGraph/__pycache__ LemonGraph/*/__pycache__ LemonGraph.egg-info)  | gxargs --no-run-if-empty rm -rv
+	hash gxargs 2>/dev/null && args=gxargs || args=xargs; \
+	echo $(wildcard *.a *.so *.o *.pyc LemonGraph/*.pyc LemonGraph/*/*.pyc  LemonGraph/*.so MANIFEST) | $$args --no-run-if-empty rm -v && \
+	echo $(wildcard .eggs build dist LemonGraph/__pycache__ LemonGraph/*/__pycache__ LemonGraph.egg-info)  | $$args --no-run-if-empty rm -rv
 
 distclean: clean
 	@find deps -mindepth 2 -maxdepth 2 -exec rm -rv {} \;
