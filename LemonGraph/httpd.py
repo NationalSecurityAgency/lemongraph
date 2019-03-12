@@ -212,21 +212,48 @@ class Chunks(object):
 # because every multiprocessing.Process().start() very helpfully
 # does a waitpid(WNOHANG) across all known children, and I want
 # to use os.wait() to catch exiting children
+# TODO: replace mon-linux hackiness with cross-platform C osal_fdatasync
 class Process(object):
     def __init__(self, func):
         sys.stdout.flush()
         sys.stderr.flush()
-        self.pid = os.fork()
-        if self.pid == 0:
-            lib.watch_parent(signal.SIGTERM)
-            code = 1
-            try:
-                func()
-                code = 0
-            finally:
-                sys.stdout.flush()
-                sys.stderr.flush()
-                os._exit(code)
+
+        if sys.platform == "Linux":
+            self.pid = os.fork()
+            if self.pid == 0:
+                lib.osal_fdatasync(signal.SIGTERM)
+                code = 1
+                try:
+                    func()
+                    code = 0
+                finally:
+                    sys.stdout.flush()
+                    sys.stderr.flush()
+                    os._exit(code)
+        else:
+            (r, w) = os.pipe()
+            self.pid = os.fork()
+            if self.pid == 0:
+                os.close(w) # close write end of pipe
+                os.setpgid(0, 0) # prevent ^C in parent from stopping this process
+                child = os.fork()
+                if child == 0:
+                    os.close(r) # close read end of pipe (don't need it here)
+                    # os.execl(args[0], *args)
+                    code = 1
+                    try:
+                        func()
+                        code = 0
+                    finally:
+                        sys.stdout.flush()
+                        sys.stderr.flush()
+                        os._exit(code)
+                    #os._exit(1)
+                os.read(r, 1)
+                os.kill(child, 9)
+                os._exit(1)
+        os.close(r)
+
 
     def terminate(self, sig=signal.SIGTERM):
         os.kill(self.pid, sig)

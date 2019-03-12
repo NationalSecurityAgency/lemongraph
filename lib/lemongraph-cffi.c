@@ -2,20 +2,10 @@
 #include<inttypes.h>
 #include<fcntl.h>
 #include<signal.h>
-#include<dirent.h>
-#include<sys/prctl.h>
 
 #include<db.h>
 #include<lemongraph.h>
-
-void watch_parent(int sig){
-	prctl(PR_SET_PDEATHSIG, sig);
-}
-
-char *_readdir(DIR *dirp){
-    struct dirent *de = readdir(dirp);
-    return de ? de->d_name : NULL;
-}
+#include<osal.h>
 
 db_snapshot_t graph_snapshot_new(graph_t g, int compact){
     return db_snapshot_new((db_t)g, compact);

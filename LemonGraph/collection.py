@@ -11,6 +11,7 @@ import sys
 from time import sleep, time
 import uuid
 
+
 from lazy import lazy
 from pysigset import suspended_signals
 
@@ -474,7 +475,7 @@ class Collection(object):
             # Otherwise, we might have to mmap the whole region and msync it - maybe?
             # Opening it via LemonGraph adds overhead, burns double the file descriptors, and
             # currently explodes if I try to set RLIMIT_NOFILE > 2050. I know not why.
-            # We also assume that fdatasync() is good, which it is for Linux >= 3.6
+            # fdatasync() is used for Linux and assumed good v >= 3.6. The more portable fsync() used for Mac & Win should work, it's effectively fdatasync + additional guarantee to update the file's modification time - hence slight perf hit. But, testing wouldn't hurt.
             count = 0
             backlog = True
             while backlog:
@@ -495,7 +496,7 @@ class Collection(object):
                             count += len(uuids)
                             backlog = len(ctx.updatedDB)
                         for fd in todo:
-                            os.fdatasync(fd)
+                            lib.osal_fdatasync(fd)
                     finally:
                         for fd in todo:
                             os.close(fd)
