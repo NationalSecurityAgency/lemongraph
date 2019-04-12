@@ -101,6 +101,16 @@ class LG_Lite(object):
             for flow in adapter.flows(**kwargs):
                 yield flow
 
+    def ffwd(self, start=None):
+        flows = self.flows(active=True)
+        if start is None:
+            flows = (f for f in flows if f._pos < self.txn.nextID)
+        else:
+            flows = (f for f in flows if f._pos == start)
+        for f in flows:
+            with f as flow:
+                flow.ffwd()
+
 
 class Adapter(object):
 
@@ -242,7 +252,7 @@ class Flow(object):
         return self._pos
 
     # set pos=1 to make flow start at beginning of job
-    #	pos > 0: absolute
+    #   pos > 0: absolute
     #   pos < 1: relative to current nextID
     @pos.setter
     def pos(self, p):
@@ -317,6 +327,16 @@ class Flow(object):
             if uuid not in blacklist:
                 return Task(self, uuid=uuid)
         raise IndexError
+
+    def ffwd(self):
+        pos = self._pos
+        def scanner(entry):
+            pos = entry.ID
+
+        for chain in self.txn.query(self.qfull, start=pos, scanner=scanner, snap=True):
+            self.pos = pos
+            return
+        self.pos = self.txn.nextID
 
     def _create_task(self, limit, default_limit=200):
         try:

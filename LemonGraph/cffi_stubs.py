@@ -112,6 +112,7 @@ int graph_updated(graph_t g);
 size_t graph_size(graph_t g);
 void graph_remap(graph_t g);
 void graph_close(graph_t g);
+int graph_fd(graph_t g);
 
 // fetch entities by logID
 entry_t graph_entry(graph_txn_t txn, const logID_t id);
@@ -247,7 +248,6 @@ int db_snapshot_close(db_snapshot_t snap);
 int db_snapshot_fd(db_snapshot_t snap);
 
 // custom extras
-void watch_parent(int sig);
 void free(void *);
 DIR *opendir(const char *name);
 char *_readdir(DIR *dirp);
@@ -266,10 +266,14 @@ int graph_set_mapsize(graph_t g, size_t mapsize);
 size_t graph_get_mapsize(graph_t g);
 size_t graph_get_disksize(graph_t g);
 db_snapshot_t graph_snapshot_new(graph_t g, int compact);
+
+int afsync_receiver(char *dir, unsigned int threads, int sfd, int mfd);
+int afsync_queue(int sfd, char *uuid);
+int afsync_unqueue(int sfd, char *uuid);
 '''
 
 C_KEYWORDS = dict(
-    sources=['deps/lmdb/libraries/liblmdb/mdb.c', 'deps/lmdb/libraries/liblmdb/midl.c', 'lib/lemongraph.c', 'lib/db.c', 'lib/counter.c'],
+    sources=['deps/lmdb/libraries/liblmdb/mdb.c', 'deps/lmdb/libraries/liblmdb/midl.c', 'lib/lemongraph.c', 'lib/db.c', 'lib/counter.c', 'lib/afsync.c', 'lib/avl.c'],
     include_dirs=['lib','deps/lmdb/libraries/liblmdb'],
     libraries=['z'],
 )

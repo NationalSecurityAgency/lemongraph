@@ -8,14 +8,14 @@ SNAPSHOT:=lg-$(shell date +%Y%m%d)
 
 default: build
 
-liblemongraph.a:  mdb.o midl.o lemongraph.o db.o counter.o
-liblemongraph.so: mdb.o midl.o lemongraph.o db.o counter.o
+liblemongraph.a:  mdb.o midl.o lemongraph.o db.o counter.o afsync.o avl.o
+liblemongraph.so: mdb.o midl.o lemongraph.o db.o counter.o afsync.o avl.o
 liblemongraph.so: LDFLAGS=-pthread
 liblemongraph.so: LDLIBS=-lz
 
 clean:
-	@echo $(wildcard *.a *.so *.o *.pyc LemonGraph/*.pyc LemonGraph/*/*.pyc LemonGraph/*.so MANIFEST) | xargs --no-run-if-empty rm -v
-	@echo $(wildcard .eggs build dist __pycache__ LemonGraph/__pycache__ LemonGraph/*/__pycache__ LemonGraph.egg-info)  | xargs --no-run-if-empty rm -rv
+	@find . -type d \( -name __pycache__ -o -name .eggs -o -name build -o -name dist -o -name \*.egg-info \) -exec find {} -mindepth 1 -delete -print \; -delete -print
+	@find . -type f \( -name \*.pyc -o -name MANIFEST -o -name \*.o -o -name \*.a -o -name \*.so \) -delete -print
 
 distclean: clean
 	@find deps -mindepth 2 -maxdepth 2 -exec rm -rv {} \;

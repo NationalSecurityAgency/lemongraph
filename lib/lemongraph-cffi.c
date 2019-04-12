@@ -1,16 +1,11 @@
-#include<stdlib.h>
-#include<inttypes.h>
-#include<fcntl.h>
-#include<signal.h>
 #include<dirent.h>
-#include<sys/prctl.h>
+#include<fcntl.h>
+#include<stdlib.h>
+#include<sys/socket.h>
 
 #include<db.h>
 #include<lemongraph.h>
-
-void watch_parent(int sig){
-	prctl(PR_SET_PDEATHSIG, sig);
-}
+#include<afsync.h>
 
 char *_readdir(DIR *dirp){
     struct dirent *de = readdir(dirp);

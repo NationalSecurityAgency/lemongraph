@@ -1,6 +1,5 @@
 from __future__ import print_function
 
-import atexit
 from collections import deque, namedtuple
 import dateutil.parser
 import errno
@@ -90,10 +89,17 @@ class Handler(HTTPMethods):
     single = ()
     single_parameters = {}
 
-    def __init__(self, collection_path=None, graph_opts=None, notls=False):
+    def __init__(self, collection_path=None, collection_syncd=None, graph_opts=None, notls=False):
         self.collection_path = collection_path
+        self.collection_syncd = collection_syncd
         self.notls = notls
         self.graph_opts = {} if graph_opts is None else graph_opts
+
+    def close(self):
+        global collection
+        if collection is not None:
+            collection.close()
+            collection = None
 
     @lazy
     def collection(self):
@@ -104,8 +110,7 @@ class Handler(HTTPMethods):
         global collection
         if collection is None:
             log.debug('worker collection init')
-            collection = Collection(self.collection_path, graph_opts=self.graph_opts, nosync=True, nometasync=False, notls=self.notls)
-            atexit.register(collection.close)
+            collection = Collection(self.collection_path, syncd=self.collection_syncd, graph_opts=self.graph_opts, nosync=True, nometasync=False, notls=self.notls)
         return collection
 
     @lazy
@@ -1314,7 +1319,7 @@ class LG__Adapter_Job_Task_get(_LG_Tasky):
 
 
 class Server(object):
-    def __init__(self, collection_path=None, graph_opts=None, notls=False, **kwargs):
+    def __init__(self, collection_path=None, collection_syncd=None, graph_opts=None, notls=False, **kwargs):
         classes = (
             Graph_Root,
             Graph_UUID,
@@ -1348,6 +1353,6 @@ class Server(object):
         global collection
         collection = None
 
-        handlers = tuple( H(collection_path=collection_path, graph_opts=graph_opts, notls=notls) for H in classes)
+        handlers = tuple( H(collection_path=collection_path, collection_syncd=collection_syncd, graph_opts=graph_opts, notls=notls) for H in classes)
         kwargs['handlers'] = handlers
         httpd(**kwargs)

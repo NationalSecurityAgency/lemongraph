@@ -180,6 +180,10 @@ class Graph(object):
     def path(self):
         return self._path
 
+    @builtin.property
+    def fd(self):
+        return lib.graph_fd(self._graph)
+
 
 class SnapshotIterator(object):
     def __init__(self, graph, bs=10485760, compact=True):
@@ -361,6 +365,7 @@ class Transaction(GraphItem):
 
     def _commit(self):
         if self.updated:
+            self.lg_lite.ffwd(start=self._startID)
             self.flush(updated=True)
             updates = self.nextID - self._startID
             err = lib.graph_txn_commit(self._txn)

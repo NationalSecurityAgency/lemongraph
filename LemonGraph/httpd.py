@@ -4,6 +4,7 @@ import logging
 import multiprocessing
 import os
 import re
+import select
 import signal
 import socket
 from six import itervalues
@@ -26,12 +27,27 @@ except ImportError:
         return json.dumps(x, separators=(',', ':'), ensure_ascii=False)
     json_decode = lambda x: json.loads(wire.decode(x))
 
+try:
+    s = socket.socket()
+    s.detach
+    def close_socket(sock):
+        fd = sock.detach()
+        return os.close(fd)
+except AttributeError:
+    def close_socket(sock):
+        return sock.close()
+    pass
+finally:
+    close_socket(s)
+
 # pypi
 from lazy import lazy
-from pysigset import suspended_signals
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
+
+log_proc = logging.getLogger('LemonGraph.proc')
+log_proc.addHandler(logging.NullHandler())
 
 loglevels = {
     'info': log.info,
@@ -213,22 +229,23 @@ class Chunks(object):
 # does a waitpid(WNOHANG) across all known children, and I want
 # to use os.wait() to catch exiting children
 class Process(object):
-    def __init__(self, func):
+    def __init__(self, func, terminate=None, close_fds=()):
         sys.stdout.flush()
         sys.stderr.flush()
+        self.terminate = self.default_terminate if terminate is None else terminate
         self.pid = os.fork()
         if self.pid == 0:
-            lib.watch_parent(signal.SIGTERM)
-            code = 1
             try:
-                func()
-                code = 0
+                for fd in close_fds:
+                    os.close(fd)
+                code = 1
+                code = func() or 0
             finally:
                 sys.stdout.flush()
                 sys.stderr.flush()
                 os._exit(code)
 
-    def terminate(self, sig=signal.SIGTERM):
+    def default_terminate(self, sig=signal.SIGTERM):
         os.kill(self.pid, sig)
 
 
@@ -244,6 +261,8 @@ class Service(object):
 
         self.chunks = Chunks(bs=buflen)
 
+        self.pr, self.pw = os.pipe()
+
         if sock is None:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
@@ -252,20 +271,11 @@ class Service(object):
             sock.bind((host or '0.0.0.0', 8000 if port is None else port))
 
         sock.listen(socket.SOMAXCONN)
-        sock.settimeout(10)
+        sock.setblocking(0)
         self.sock = sock
         self.timeout = timeout
 
-        def ep_wrapper(func):
-            def wrapper():
-                signal.signal(signal.SIGHUP, signal.SIG_IGN)
-                signal.signal(signal.SIGINT, signal.SIG_IGN)
-                return func()
-            return wrapper
-
-        self.extra_procs = None
-        if extra_procs:
-            self.extra_procs = dict((label, ep_wrapper(target)) for label, target in extra_procs.items())
+        self.extra_procs = extra_procs or {}
 
         self.handlers = handlers or ()
         self.root = Step()
@@ -284,7 +294,13 @@ class Service(object):
 
     def run(self):
         def _halt(sig, frame):
+            try:
+                self.sock.shutdown(socket.SHUT_RDWR)
+            except:
+                pass
+            close_socket(self.sock)
             raise Graceful()
+
 #        def _reload(sig, frame):
 #            raise Graceful(True)
 
@@ -294,39 +310,42 @@ class Service(object):
 
         procs = {}
         ip, port = self.sock.getsockname()
-        log.info("+master(%d): listening on %s:%d", os.getpid(), ip, port)
+        log_proc.info("+master(%d): listening on %s:%d", os.getpid(), ip, port)
 
         def spawn(label, target):
-            proc = Process(target)
-            procs[proc.pid] = (proc, label, target)
-            log.info("+%s(%d): spawned", label, proc.pid)
+            try:
+                target, terminate = target
+            except:
+                terminate = None
+            proc = Process(target, terminate=terminate, close_fds=[self.pw])
+            procs[proc.pid] = (proc, label, (target, terminate))
+            log_proc.info("+%s(%d): spawned", label, proc.pid)
 
         try:
             while len(procs) < self.spawn:
-                spawn("worker", self.worker)
+                spawn("worker", self.safe_worker)
 
-            if self.extra_procs is not None:
-                for label, target in self.extra_procs.items():
-                    spawn(label, target)
+            for label, target in self.extra_procs.items():
+                spawn(label, target)
 
             while True:
                 pid, status = os.wait()
                 if pid > 0:
                     proc, label, target = procs.pop(pid)
                     if status is 0:
-                        log.info("-%s(%d): exit: %d", label, pid, status)
+                        log_proc.info("-%s(%d): exit: %d", label, pid, status)
                     else:
-                        log.warning("-%s(%d): exit: %d", label, pid, status)
+                        log_proc.warning("-%s(%d): exit: %d", label, pid, status)
                     spawn(label, target)
-                    time.sleep(0.1)
 
         except Graceful:
-            log.info("Waiting for subprocesses to finish: %s", sorted(procs.keys()))
+            log_proc.info("Waiting for subprocesses to finish: %s", sorted(procs.keys()))
             for proc, label, target in procs.values():
                 try:
                     proc.terminate()
                 except OSError:
                     pass
+            os.close(self.pw)
             while procs:
                 try:
                     pid, status = os.wait()
@@ -334,72 +353,82 @@ class Service(object):
                     break
                 proc, label, target = procs.pop(pid)
                 if status is 0:
-                    log.info("-%s(%d): exit: %d", label, pid, status)
+                    log_proc.info("-%s(%d): exit: %d", label, pid, status)
                 else:
-                    log.warning("-%s(%d): exit: %d", label, pid, status)
+                    log_proc.warning("-%s(%d): exit: %d", label, pid, status)
         finally:
-            log.info("-master(%d): exit: 0", os.getpid())
+            log_proc.info("-master(%d): exit: 0", os.getpid())
 
-    def worker(self):
+    def safe_worker(self):
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
         try:
-            signal.signal(signal.SIGHUP, signal.SIG_IGN)
-            signal.signal(signal.SIGINT, signal.SIG_IGN)
-
-            while self.maxreqs:
-                with suspended_signals(signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
-                    # fixme - periodic hooks go here
-                    pass
-                try:
-                    conn, addr = self.sock.accept()
-                except (socket.timeout, socket.error):
-                    continue
-                with suspended_signals(signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
-                    log.debug('client %s:%d: connected', *addr)
-                    self.maxreqs -= 1
-                    try:
-                        while True:
-                            res = Response(conn)
-                            try:
-                                try:
-                                    req = Request(conn, timeout=self.timeout)
-                                    # hmm - it may not make sense to allow pipelining by default - look for magic header
-                                    if 'HTTP/1.1' == req.version and ('x-please-pipeline' not in req.headers or self.maxreqs is 0):
-                                        res.headers.set('Connection', 'close')
-                                    self.process(req, res)
-                                except HTTPError as e:
-                                    log.info('HTTP error %s', e)
-                                    res.error(e.code, e.message, *e.headers)
-                            except ErrorCompleted:
-                                pass
-                            ended = time.time()
-                            log.debug('response/finished ms: %d/%d', res.delay_ms, int((ended - res.start) * 1000))
-                            if 'HTTP/1.1' != req.version:
-                                raise Disconnected('not HTTP/1.1', level='debug')
-                            elif res.headers.contains('Connection', 'close'):
-                                raise Disconnected('handler closed', level='debug')
-                    except Disconnected as e:
-                        pass
-                    except socket.timeout:
-                        log.warning('client %s:%d: timed out', *addr)
-                    except Exception as e:
-                        info = sys.exc_info()
-                        log.error('Unhandled exception: %s', traceback.print_exception(*info))
-                        sys.exit(1)
-                    finally:
-                        try:
-                            conn.shutdown(socket.SHUT_RDWR)
-                        except Exception:
-                            pass
-                        conn.close()
-                        log.debug('client %s:%d: finished', *addr)
+            return self.worker()
         except Graceful:
 #            if e.reload:
-#                log.info("*master(%d): re-exec!", os.getpid())
-#                log.warn(repr(cmd))
+#                log_proc.info("*master(%d): re-exec!", os.getpid())
+#                log_proc.warn(repr(cmd))
                 #if __package__ is not None:
                     #sys.argv[0] = '-m%s' % __loader__.name
                 #os.execl(sys.executable, sys.executable, *sys.argv)
             pass
+        finally:
+            for h in self.handlers:
+                h.close()
+
+    def worker(self):
+        sock_fd = self.sock.fileno()
+        pipe_fd = self.pr
+
+        poll = select.poll()
+        poll.register(sock_fd, select.POLLIN)
+        poll.register(pipe_fd, select.POLLIN)
+        while self.maxreqs:
+            fds = tuple(fd for fd, event in poll.poll(1000))
+            if pipe_fd in fds:
+                raise Graceful
+            if sock_fd not in fds:
+                continue
+            try:
+                conn, addr = self.sock.accept()
+            except:
+                continue
+
+            log.debug('client %s:%d: connected', *addr)
+            self.maxreqs -= 1
+            try:
+                while True:
+                    res = Response(conn)
+                    try:
+                        try:
+                            req = Request(conn, timeout=self.timeout)
+                            # hmm - it may not make sense to allow pipelining by default - look for magic header
+                            if 'HTTP/1.1' == req.version and ('x-please-pipeline' not in req.headers or self.maxreqs is 0):
+                                res.headers.set('Connection', 'close')
+                            self.process(req, res)
+                        except HTTPError as e:
+                            log.info('HTTP error %s', e)
+                            res.error(e.code, e.message, *e.headers)
+                    except ErrorCompleted:
+                        pass
+                    ended = time.time()
+                    log.debug('response/finished ms: %d/%d', res.delay_ms, int((ended - res.start) * 1000))
+                    if 'HTTP/1.1' != req.version:
+                        raise Disconnected('not HTTP/1.1', level='debug')
+                    elif res.headers.contains('Connection', 'close'):
+                        raise Disconnected('handler closed', level='debug')
+            except Disconnected as e:
+                pass
+            except socket.timeout:
+                log.warning('client %s:%d: timed out', *addr)
+            except Exception as e:
+                info = sys.exc_info()
+                log.error('Unhandled exception: %s', traceback.print_exception(*info))
+                sys.exit(1)
+            finally:
+                close_socket(conn)
+                log.debug('client %s:%d: finished', *addr)
 
     def process(self, req, res):
         cursor = self.root
@@ -452,8 +481,11 @@ class Service(object):
     def _fixed(self, body):
         clen = len(body)
         self.res.headers.set('Content-Length', clen)
-        self.res.begin(default=200 if clen else 204)
-        self.res.send(body)
+        if clen:
+            self.res.begin(default=200)
+            self.res.send(body)
+        else:
+            self.res.begin(default=204)
 
     def _chunked(self, body):
         chunks = self.chunks.chunkify(body)
@@ -554,6 +586,7 @@ class Response(object):
 
     def json(self, doc):
         return json_encode(doc)
+
 
 class Request(object):
     req = re.compile('^(' + '|'.join(HTTPMethods.all_methods) + ') (.+?)(?: (HTTP/[0-9.]+))?(\r?\n)$')

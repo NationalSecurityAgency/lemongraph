@@ -84,9 +84,9 @@ Python 3 should work now though - replace `python`/`pypy`/`pip` and package name
 
 Or to run without proper installation, you must manually install dependencies:
 * CPython:
-	* `pip install lazy msgpack pysigset python-dateutil six ujson`
+	* `pip install lazy msgpack python-dateutil six ujson`
 * Pypy:
-	* `pip install lazy msgpack pysigset python-dateutil six`
+	* `pip install lazy msgpack python-dateutil six`
 
 # Python Example
 ```python

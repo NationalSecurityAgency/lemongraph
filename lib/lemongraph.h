@@ -93,6 +93,7 @@ int graph_updated(graph_t g);
 size_t graph_size(graph_t g);
 void graph_remap(graph_t g);
 void graph_close(graph_t g);
+int graph_fd(graph_t g);
 
 // fetch entities by logID
 entry_t graph_entry(graph_txn_t txn, const logID_t id);

@@ -3,7 +3,9 @@ from .. import Serializer, Adapters
 from ..collection import Collection
 from ..httpd import Graceful
 from . import Server
+from .. import syncd
 
+import signal
 import sys
 import logging
 from getopt import GetoptError, gnu_getopt as getopt
@@ -144,7 +146,7 @@ def main():
     except (KeyError, ValueError):
         usage()
 
-    all_logs = tuple("LemonGraph.%s" % x for x in ('httpd', 'collection', 'server'))
+    all_logs = tuple("LemonGraph.%s" % x for x in ('proc', 'httpd', 'collection', 'server', 'syncd'))
     log_levels = dict( (k, default_level) for k in all_logs)
     for token in logspec.split(','):
         try:
@@ -166,7 +168,7 @@ def main():
         logger.addHandler(loghandler)
         logger.setLevel(getattr(logging, level.upper()))
 
-    graph_opts=dict(
+    graph_opts = dict(
         serialize_property_value=Serializer.msgpack(),
         adapters=Adapters(seed_depth0, update_depth_cost),
         nosync=nosync, nometasync=nometasync,
@@ -177,15 +179,28 @@ def main():
     col = Collection(path, create=True, rebuild=rebuild, graph_opts=graph_opts, notls=notls)
     col.close()
 
-    def _syncd():
-        collection = Collection(path, graph_opts=graph_opts, nosync=True, nometasync=False, notls=notls)
-        try:
-            collection.daemon(poll=poll)
-        except Graceful:
-            pass
-        finally:
-            collection.close()
+    sd = syncd.Syncd(path)
+    def receiver():
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        return sd.receiver()
 
-    Server(collection_path=path, graph_opts=graph_opts, notls=notls, extra_procs={'syncd': _syncd}, host=ip, port=port, spawn=workers, timeout=timeout, buflen=buflen)
+    # fire up syncd monitor thread
+    sd.monitor()
+
+    kwargs = dict(
+        collection_path=path,
+        collection_syncd=sd,
+        graph_opts=graph_opts,
+        notls=notls,
+        extra_procs={'syncd': (receiver, sd.shutdown)},
+        host=ip,
+        port=port,
+        spawn=workers,
+        timeout=timeout,
+        buflen=buflen,
+        )
+    Server(**kwargs)
 
 main()

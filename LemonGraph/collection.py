@@ -12,7 +12,6 @@ from time import sleep, time
 import uuid
 
 from lazy import lazy
-from pysigset import suspended_signals
 
 from . import Graph, Serializer, Hooks, dirlist, Indexer, BaseIndexer, Query
 
@@ -23,6 +22,8 @@ except NameError:
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
+
+idx_uuid = '00000000-0000-0000-0000-000000000000'
 
 def uuidgen():
     return str(uuid.uuid1())
@@ -302,9 +303,8 @@ class Context(object):
         status['adapters'] = adapters = []
         if status['enabled']:
             pri = (status['priority'],)
-            for flow in txn.lg_lite.flows():
-                if flow.active:
-                    adapters.append(flow.aqb + pri)
+            for flow in txn.lg_lite.flows(active=True):
+                adapters.append(flow.aqb + pri)
 
         try:
             old_status = self.statusDB[uuid]
@@ -326,14 +326,6 @@ class Context(object):
             pass
 
     @lazy
-    def updatedDB(self):
-        return self.txn.fifo('lg.collection.updated')
-
-    @lazy
-    def updatedDB_idx(self):
-        return self.txn.kv('lg.collection.updated_idx', serialize_value=self.msgpack)
-
-    @lazy
     def statusDB(self):
         return self.txn.kv('lg.collection.status', serialize_value=self.msgpack)
 
@@ -346,7 +338,7 @@ class Collection(object):
     # increment on index structure changes
     VERSION = 2
 
-    def __init__(self, dir, graph_opts=None, create=True, rebuild=False, **kwargs):
+    def __init__(self, dir, graph_opts=None, create=True, rebuild=False, syncd=None, **kwargs):
         self.db = None
         if create:
             try:
@@ -355,6 +347,7 @@ class Collection(object):
                 if e.errno != errno.EEXIST or not os.path.isdir(dir):
                     raise
         self.dir = os.path.abspath(dir)
+        self.syncd = syncd
         idx = "%s.idx" % self.dir
         self.graph_opts = {} if graph_opts is None else graph_opts
         self.notls = kwargs.get('notls', False)
@@ -425,17 +418,16 @@ class Collection(object):
                 try:
                     ctx.sync(uuid, txn)
                 finally:
-                    try:
-                        if uuid in ctx.updatedDB_idx:
-                            return
-                    except KeyError:
-                        pass
-                    ctx.updatedDB.push(uuid)
-                    ctx.updatedDB_idx[uuid] = time()
+                    if self.syncd is not None:
+                        self.syncd.queue(uuid)
+                        self.syncd.queue(idx_uuid)
 
     def remove(self, uuid):
         with self.context(write=True) as ctx:
             ctx.remove(uuid)
+            if self.syncd is not None:
+                self.syncd.unqueue(uuid)
+                self.syncd.queue(idx_uuid)
 
     def drop(self, uuid):
         path = self.graph_path(uuid)
@@ -515,81 +507,6 @@ class Collection(object):
     def context(self, write=True):
         return Context(self, write=write)
 
-    def daemon(self, poll=250, maxopen=100):
-        poll /= 1000.0
-        ticker = self.ticker()
-        todo = deque()
-
-        # count fds in use - just check first 100 or so
-        pad = 0
-        for fd in xrange(0, 100):
-            try:
-                os.fstat(fd)
-                pad += 1
-            except:
-                pass
-
-        # check limits
-        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-        if maxopen + pad > soft:
-            soft = min(maxopen + pad, hard)
-            resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
-            maxopen = soft - pad
-
-        map_age = 0
-        log.info('using %d max open graphs' % maxopen)
-        while True:
-            next(ticker)
-            sleep(poll)
-            map_age += poll
-            if map_age >= 60:
-                self.db.remap()
-                map_age = 0
-            self.db.sync(force=True)
-            with self.context(write=False) as ctx:
-                try:
-                    if ctx.updatedDB.empty:
-                        continue
-                except KeyError:
-                    continue
-
-            # Note - we assume user is not using DB_WRITEMAP which is reasonable because:
-            #   LemonGraph explicitly disables that
-            # Otherwise, we might have to mmap the whole region and msync it - maybe?
-            # Opening it via LemonGraph adds overhead, burns double the file descriptors, and
-            # currently explodes if I try to set RLIMIT_NOFILE > 2050. I know not why.
-            # We also assume that fdatasync() is good, which it is for Linux >= 3.6
-            count = 0
-            backlog = True
-            while backlog:
-                with suspended_signals(signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
-                    then = time()
-                    try:
-                        log.debug("syncing")
-                        with self.context(write=True) as ctx:
-                            uuids = ctx.updatedDB.pop(maxopen)
-                            for uuid in uuids:
-                                age = ctx.updatedDB_idx.pop(uuid)
-                                try:
-                                    fd = os.open(self.graph_path(uuid), os.O_RDONLY)
-                                    todo.append(fd)
-                                except OSError as e:
-                                    # may have been legitimately deleted already
-                                    if e.errno != errno.ENOENT:
-                                        log.warning('error syncing graph %s: %s', uuid, str(e))
-                            count += len(uuids)
-                            backlog = len(ctx.updatedDB)
-                        for fd in todo:
-                            os.fdatasync(fd)
-                    finally:
-                        for fd in todo:
-                            os.close(fd)
-                        todo.clear()
-                with self.context(write=False) as ctx:
-                    backlog = len(ctx.updatedDB)
-                now = time()
-                log.info("synced %d, backlog %d, age %.1fs, elapsed %.1fs", count, backlog, now - age, now - then)
-
     @lazy
     def msgpack(self):
         return Serializer.msgpack()
@@ -608,3 +525,4 @@ class Collection(object):
             for x in strings:
                 fh.write(x)
                 yield
+

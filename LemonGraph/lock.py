@@ -2,6 +2,8 @@ import os
 import fcntl
 
 class Lock(object):
+    _close = os.close
+
     # byte-range file locking is tracked by process for an inode.
     # when a process closes a file descriptor, any locks it had
     # on the underlying inode are released.
@@ -39,7 +41,7 @@ class Lock(object):
 
     def close(self):
         if self.fd is not None:
-            os.close(self.fd)
+            self._close(self.fd)
             self.fd = None
 
     def __del__(self):

@@ -1,7 +1,3 @@
-#ifndef _BSD_SOURCE
-#define _BSD_SOURCE
-#endif
-
 // suppress assert() elimination, as we are currently heavily relying on it
 #ifdef NDEBUG
 #undef NDEBUG
@@ -44,7 +40,7 @@ STATIC_ASSERT(sizeof(uint64_t) == sizeof(strID_t), "");
 //#define debug(args...) while(0);
 
 // provide type-agnostic clz wrapper, and return a more useful value for clz(0)
-#define __clz_wrapper(x) (int)((x) ? (sizeof(x) == sizeof(long) ? __builtin_clzl(x) : (sizeof(x) == sizeof(long long) ? __builtin_clzll(x) : __builtin_clz((int)(x)))) : sizeof(x) * 8)
+#define __clz_wrapper(x) (unsigned int)((x) ? (sizeof(x) == sizeof(long) ? (unsigned)__builtin_clzl(x) : (sizeof(x) == sizeof(long long) ? (unsigned)__builtin_clzll(x) : (unsigned)__builtin_clz((int)(x)))) : sizeof(x) * 8)
 
 // quickly take unsigned numeric types and count minimum number of bytes needed to represent - for varint encoding
 #define intbytes(x) (sizeof(x) - __clz_wrapper(x) / 8)
@@ -253,7 +249,8 @@ static INLINE uint64_t _nextID(graph_txn_t txn, const int consume, uint64_t * co
 		return 0;
 	}
 
-	int r, i;
+	int r;
+	unsigned int i;
 	uint64_t id = *cache;
 	if(0 == id){
 		struct cursor_t c;
@@ -760,7 +757,7 @@ entry_t graph_entry(graph_txn_t txn, const logID_t id){
 	encode(id, buf, key.size);
 	r = db_get((txn_t)txn, DB_LOG, &key, &data);
 	if(DB_SUCCESS == r){
-		const int rectype = *(uint8_t *)data.data;
+		const uint8_t rectype = *(uint8_t *)data.data;
 		assert(rectype < sizeof(recsizes) / sizeof(*recsizes));
 		int klen = 1;
 		e = malloc(recsizes[rectype]);
@@ -1141,7 +1138,7 @@ int kv_fifo_push_n(kv_t kv, void **datas, size_t *lens, const int count){
 	kv->key.data = kv->kbuf;
 
 	const int resolve = kv->flags & (LG_KV_MAP_KEYS|LG_KV_MAP_DATA);
-	unsigned int i;
+	int i;
 	strID_t id;
 	uint8_t edata[esizeof(id)];
 	for(i = 0; DB_SUCCESS == r && i < count; i++){
@@ -1475,13 +1472,13 @@ int kv_pq_cursor_next(graph_txn_t txn, uint8_t *cursor, void **key, size_t *klen
 	buffer_t k, v;
 	struct cursor_t c;
 
-	const int domlen = enclen(cursor, 1);
+	const unsigned int domlen = enclen(cursor, 1);
 
 	// flags + domlen + magic + priority
-	const int ctroff = domlen + 3;
+	const unsigned int ctroff = domlen + 3;
 
 	// domlen + magic
-	const int pfxlen = domlen + 1;
+	const unsigned int pfxlen = domlen + 1;
 
 	// skip flags byte
 	k.data = cursor + 1;
@@ -1501,7 +1498,7 @@ int kv_pq_cursor_next(graph_txn_t txn, uint8_t *cursor, void **key, size_t *klen
 		goto done;
 	}
 
-	r = cursor_get(&c, &k, &v, MDB_GET_CURRENT);
+	r = cursor_get(&c, &k, &v, DB_GET_CURRENT);
 	if(DB_SUCCESS != r)
 		goto done;
 
@@ -1636,7 +1633,7 @@ int kv_next(kv_t kv, void **key, size_t *klen, void **data, size_t *dlen){
 		pos.data = kbuf;
 		assert(pos.size >= kv->klen);
 		val.data = NULL;
-		r = cursor_get(&c, &pos, &val, MDB_SET_KEY);
+		r = cursor_get(&c, &pos, &val, DB_SET_KEY);
 		assert(val.data);
 		if(DB_SUCCESS == r){
 			if(kv->flags & LG_KV_MAP_KEYS){
@@ -2021,7 +2018,7 @@ static INLINE int _fetch_info(graph_txn_t txn){
 			buffer_t data, key;
 			r = cursor_get(&c, &key, &data, DB_GET_CURRENT);
 			assert(DB_SUCCESS == r);
-			int i = 0;
+			size_t i = 0;
 			decode(txn->prev_id, key.data, i);
 			decode(txn->prev_start, key.data, i);
 			decode(txn->prev_count, key.data, i);
@@ -2103,7 +2100,8 @@ void graph_txn_abort(graph_txn_t txn){
 }
 
 int graph_txn_reset(graph_txn_t txn){
-	int i, r = 1;
+	int r = 1;
+	unsigned int i;
 	graph_txn_t sub_txn = graph_txn_begin((graph_t)(((txn_t)txn)->db), txn, 0);
 	if(sub_txn){
 		// truncate all tables
@@ -2171,7 +2169,7 @@ static INLINE int _find_txn(graph_txn_t txn, txn_info_t info, logID_t beforeID){
 	int r =  txn_cursor_init(&c, (txn_t)txn, DB_TXNLOG);
 	assert(DB_SUCCESS == r);
 	r = cursor_get(&c, &key, &data, DB_SET_KEY);
-	int i;
+	size_t i;
 
 	if(DB_SUCCESS == r){
 again:
@@ -2367,4 +2365,8 @@ char *__blob(graph_txn_t txn, uint64_t id, size_t *len, int db1){
 
 char *graph_string(graph_txn_t txn, strID_t id, size_t *len){
 	return id ? __blob(txn, id, len, DB_SCALAR) : ((*len = 0), NULL);
+}
+
+int graph_fd(graph_t g){
+	return g->db.fd;
 }
