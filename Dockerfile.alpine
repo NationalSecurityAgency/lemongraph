@@ -1,4 +1,4 @@
-FROM alpine:3.8 AS base
+FROM alpine:3.9 AS base
 
 RUN apk update && apk add --no-cache py3-dateutil py3-msgpack py3-six py3-setuptools py3-cffi
 
