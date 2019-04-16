@@ -1,5 +1,7 @@
 # decorator shenanigans to bless class methods such that they can be referenced
 # as an iterable property or called with parameters (also returns an iterable)
+
+
 class CallableIterable(object):
     def __init__(self, func, target):
         self.func = func
@@ -10,6 +12,7 @@ class CallableIterable(object):
 
     def __call__(self, *args, **kwargs):
         return self.func(self.target, *args, **kwargs)
+
 
 class CallableIterableMethod(object):
     def __init__(self, fget=None):
@@ -26,5 +29,3 @@ class CallableIterableMethod(object):
             obj.__CallableIterableMethod_cache = {}
             fn = obj.__CallableIterableMethod_cache[self.fget.__name__] = CallableIterable(self.fget, obj)
         return fn
-
-

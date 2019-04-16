@@ -1,12 +1,13 @@
 from __future__ import print_function
 
 import os
-from random import randint
 import sys
 import tempfile
+from random import randint
 from time import time
 
 import LemonGraph
+
 
 def log(msg, *params):
     times.append(time())
@@ -15,8 +16,10 @@ def log(msg, *params):
     print(fmt % args)
     sys.stdout.flush()
 
+
 def munge(t, n):
     return t + str(n % 5)
+
 
 mil = tuple(range(0, 1000000))
 pairs = set()
@@ -31,7 +34,7 @@ for run in (1, 2, 3):
     try:
         g = LemonGraph.Graph(path, serialize_property_value=LemonGraph.Serializer.msgpack(), noreadahead=True, nosync=True)
         nuke.append(path + '-lock')
-        ret = LemonGraph.lib.graph_set_mapsize(g._graph, (1<<30) * 10)
+        ret = LemonGraph.lib.graph_set_mapsize(g._graph, (1 << 30) * 10)
         assert(0 == ret)
 
         times = [time()]
@@ -58,7 +61,7 @@ for run in (1, 2, 3):
             start = times[-1]
             for i, x_y in enumerate(pairs):
                 x, y = x_y
-                e = txn.edge(type=munge('edge', x+y), value=i, src=nodes[x], tgt=nodes[y])
+                e = txn.edge(type=munge('edge', x + y), value=i, src=nodes[x], tgt=nodes[y])
             log("+1m edges")
             elapsed = times[-1] - start
             print("total edge insert time: %.3lf" % elapsed)
@@ -71,5 +74,5 @@ for run in (1, 2, 3):
         for p in nuke:
             try:
                 os.unlink(p)
-            except:
+            except Exception:
                 pass

@@ -1,41 +1,49 @@
 from __future__ import print_function
 
 import atexit
-from collections import deque, namedtuple
-import dateutil.parser
 import errno
 import itertools
-from lazy import lazy
 import logging
-import msgpack
 import os
-import pkg_resources
 import re
-from six import iteritems, itervalues
-from six.moves.urllib_parse import parse_qs
 import sys
 import tempfile
 import time
 import traceback
+from collections import deque, namedtuple
 from uuid import uuid1 as uuidgen
 
-from .. import Serializer, Node, Edge, QuerySyntaxError, merge_values
+import dateutil.parser
+
+from lazy import lazy
+
+import msgpack
+
+import pkg_resources
+
+
+from six import iteritems, itervalues
+from six.moves.urllib_parse import parse_qs
+
+from .. import Edge, Node, QuerySyntaxError, Serializer, merge_values
 from ..collection import Collection, uuid_to_utc
+from ..httpd import HTTPError, HTTPMethods, httpd, json_decode, json_encode
 from ..lock import Lock
-from ..httpd import HTTPMethods, HTTPError, httpd, json_encode, json_decode
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
 
 CACHE = {}
-BLOCKSIZE=1048576
+BLOCKSIZE = 1048576
 UUID = re.compile(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
 INT = re.compile(r'^[1-9][0-9]*$')
 STRING = re.compile(r'^.+$')
 
+
 def date_to_timestamp(s):
     dt = dateutil.parser.parse(s)
     return time.mktime(dt.utctimetuple()) + dt.microsecond // 1e6
+
 
 def js_dumps(obj, pretty=False):
     txt = json_encode(obj)
@@ -43,8 +51,10 @@ def js_dumps(obj, pretty=False):
         txt += '\n'
     return txt
 
+
 def mp_dumps(obj, pretty=False):
     return msgpack.packb(obj, raw=True)
+
 
 Streamer = namedtuple('Streamer', 'mime encode')
 streamJS = Streamer('application/json', js_dumps)
@@ -54,6 +64,7 @@ Streamers = dict((x.mime, x) for x in (streamJS, streamMP))
 
 Edge_Reserved = Edge.reserved
 Node_Reserved = Node.reserved | frozenset(['depth'])
+
 
 class SeedTracker(object):
     msgpack = Serializer.msgpack()
@@ -79,6 +90,7 @@ class SeedTracker(object):
         except (KeyError, StopIteration):
             return ()
         return gen
+
 
 class Handler(HTTPMethods):
     content_types = {
@@ -122,8 +134,8 @@ class Handler(HTTPMethods):
     def content_length(self):
         try:
             return int(str(self.req.headers['Content-Length']))
-        except:
-            #if self.req.headers.contains('Transfer-Encoding', 'chunked'):
+        except Exception:
+            # if self.req.headers.contains('Transfer-Encoding', 'chunked'):
             pass
 
     @property
@@ -136,7 +148,7 @@ class Handler(HTTPMethods):
 
     # grab latest param only
     def param(self, field, default=None):
-        return self.params.get(field,[default])[-1]
+        return self.params.get(field, [default])[-1]
 
     def input(self):
         try:
@@ -170,8 +182,8 @@ class Handler(HTTPMethods):
 
     def format_edge(self, e):
         d = e.as_dict()
-        d['src'] = { "ID": e.src.ID, "type": e.src.type, "value": e.src.value }
-        d['tgt'] = { "ID": e.tgt.ID, "type": e.tgt.type, "value": e.tgt.value }
+        d['src'] = {"ID": e.src.ID, "type": e.src.type, "value": e.src.value}
+        d['tgt'] = {"ID": e.tgt.ID, "type": e.tgt.type, "value": e.tgt.value}
         del d['srcID']
         del d['tgtID']
         return d
@@ -179,7 +191,7 @@ class Handler(HTTPMethods):
     @property
     def creds(self):
         return {
-            'user':  self.param('user', None),
+            'user': self.param('user', None),
             'roles': self.params.get('role', None),
         }
 
@@ -220,8 +232,10 @@ class Handler(HTTPMethods):
         return fd, name, dbname, path
 
     msgpack = Serializer.msgpack()
+
     def kv(self, txn):
         return txn.kv('lg.restobjs', serialize_value=self.msgpack)
+
 
 def graphtxn(write=False, create=False, excl=False, on_success=None, on_failure=None):
     def decorator(func):
@@ -314,10 +328,10 @@ class _Input(Handler):
                 raise HTTPError(409, 'Bad data - chain length must be odd')
             nodes = self.map_nodes(txn, chain[0::2], seed=seed, create=create)
             for i, n in enumerate(nodes):
-                chain[i*2] = n
+                chain[i * 2] = n
             for i, x in enumerate(chain):
                 if i % 2:
-                    chain[i] = self.do_edge(txn, x, src=chain[i-1], tgt=chain[i+1], seed=seed, create=create)
+                    chain[i] = self.do_edge(txn, x, src=chain[i - 1], tgt=chain[i + 1], seed=seed, create=create)
 
     def do_nodes(self, txn, nodes, seed=False, create=False):
         for n in nodes:
@@ -334,11 +348,11 @@ class _Input(Handler):
         try:
             if create:
                 del node['ID']
-            param = { 'ID': node['ID'] }
+            param = {'ID': node['ID']}
         except KeyError:
-            param = { 'type': node['type'], 'value': node['value'] }
+            param = {'type': node['type'], 'value': node['value']}
 
-        props = dict( (k, v) for k, v in iteritems(node) if k not in Node_Reserved)
+        props = dict((k, v) for k, v in iteritems(node) if k not in Node_Reserved)
         if seed:
             props['seed'] = True
         elif not create:
@@ -361,12 +375,12 @@ class _Input(Handler):
         try:
             if create:
                 del edge['ID']
-            param = { 'ID': edge['ID'] }
+            param = {'ID': edge['ID']}
         except KeyError:
             src = self._edge_node(txn, edge, src, seed=seed, create=create, is_src=True)
             tgt = self._edge_node(txn, edge, tgt, seed=seed, create=create, is_src=False)
             param = dict(type=edge['type'], value=edge.get('value', ''), src=src, tgt=tgt)
-        props = dict( (k, v) for k, v in iteritems(edge) if k not in Edge_Reserved)
+        props = dict((k, v) for k, v in iteritems(edge) if k not in Edge_Reserved)
         if seed:
             props['seed'] = seed
         elif not create:
@@ -374,14 +388,14 @@ class _Input(Handler):
 
         try:
             e = txn.edge(**param)
-        except:
+        except Exception:
             raise HTTPError(409, "Bad edge: %s" % edge)
 
         # handle edge costs, allowed range: [0.0, 1.0]
         # silently drop bad values:
         #  cost defaults to 1 when edge is created
         #  once cost is assigned, value may not be increased, as
-        #   depth recalculation could (would?) cover the entire graph
+        #  depth recalculation could (would?) cover the entire graph
         try:
             cost = props['cost']
             if cost < 0 or cost > 1 or cost >= e['cost']:
@@ -397,7 +411,8 @@ class _Input(Handler):
         self.do_input(txn, uuid, create=True)
         self.res.code = 201
         self.res.headers.set('Location', '/graph/' + uuid)
-        return self.dumps({ 'uuid': uuid, 'id': uuid }, pretty=True)
+        return self.dumps({'uuid': uuid, 'id': uuid}, pretty=True)
+
 
 class _Streamy(object):
     def _stream_js(self, gen):
@@ -441,6 +456,7 @@ class _Streamy(object):
             pass
         yield ']}\n'
 
+
 class Graph_Root(_Input, _Streamy):
     path = ('graph',)
 
@@ -461,7 +477,7 @@ class Graph_Root(_Input, _Streamy):
     def __query_graphs(self, uuids, queries, qtoc):
         for uuid in uuids:
             try:
-#                with self.graph(uuid, readonly=True, create=False, hook=False) as g:
+                # with self.graph(uuid, readonly=True, create=False, hook=False) as g:
                 with self.graph(uuid, create=False, hook=False) as g:
                     with g.transaction(write=False) as txn:
                         try:
@@ -479,6 +495,7 @@ class Graph_Root(_Input, _Streamy):
         uuid = str(uuidgen())
         return self._create(None, uuid)
 
+
 class Graph_UUID(_Input, _Streamy):
     path = ('graph', UUID,)
     inf = float('Inf')
@@ -486,7 +503,7 @@ class Graph_UUID(_Input, _Streamy):
     def delete(self, _, uuid):
         with self.lock.exclusive(uuid) as locked:
             # opening the graph checks user/role perms
-#            with self.graph(uuid, readonly=True, create=False, locked=locked) as g:
+            # with self.graph(uuid, readonly=True, create=False, locked=locked) as g:
             with self.graph(uuid, create=False, locked=locked):
                 self.collection.drop(uuid)
 
@@ -512,12 +529,12 @@ class Graph_UUID(_Input, _Streamy):
                     if len(data) == 0:
                         break
                     fh.write(data)
-                cleanup.popleft()() # fh.close()
-#                with self.collection.graph(dbname, readonly=True, hook=False, create=False) as g:
+                cleanup.popleft()()  # fh.close()
+                # with self.collection.graph(dbname, readonly=True, hook=False, create=False) as g:
                 with self.collection.graph(dbname, hook=False, create=False):
                     pass
                 os.rename(path, target)
-                cleanup.pop() # remove os.unlink(path)
+                cleanup.pop()  # remove os.unlink(path)
                 cleanup.append(lambda: os.unlink('%s-lock' % target))
             except Exception as e:
                 os.unlink(name)
@@ -526,12 +543,12 @@ class Graph_UUID(_Input, _Streamy):
                 for x in cleanup:
                     try:
                         x()
-                    except:
+                    except Exception:
                         pass
 
     def _snapshot(self, g, uuid):
         self.res.headers.set('Content-Type', 'application/octet-stream')
-        self.res.headers.set('Content-Disposition','attachment; filename="%s.db"' % uuid)
+        self.res.headers.set('Content-Disposition', 'attachment; filename="%s.db"' % uuid)
         for block in g.snapshot(bs=BLOCKSIZE):
             yield block
 
@@ -653,6 +670,7 @@ class Graph_UUID(_Input, _Streamy):
         for x in self._update(None, uuid):
             yield x
 
+
 class Graph_UUID_Status(Handler):
     path = ('graph', UUID, 'status')
 
@@ -669,6 +687,7 @@ class Graph_UUID_Status(Handler):
             raise HTTPError(404, '%s status is not cached' % uuid)
         return status
 
+
 class Reset_UUID(_Input, Handler):
     path = ('reset', UUID,)
 
@@ -683,7 +702,7 @@ class Reset_UUID(_Input, Handler):
             os.close(fd)
             cleanup = [lambda: os.unlink(path)]
             try:
-#                with self.graph(uuid, readonly=True, locked=locked) as g1, self.collection.graph(dbname, create=True, hook=False) as g2:
+                # with self.graph(uuid, readonly=True, locked=locked) as g1, self.collection.graph(dbname, create=True, hook=False) as g2:
                 with self.graph(uuid, locked=locked) as g1, self.collection.graph(dbname, create=True, hook=False) as g2:
                     with g1.transaction(write=False) as t1, g2.transaction(write=True) as t2:
                         # fixme
@@ -692,25 +711,25 @@ class Reset_UUID(_Input, Handler):
                         if keep is None:
                             keep = self.default_keep
 
-                        if keep.get('kv',False):
+                        if keep.get('kv', False):
                             self.clone_kv(t1, t2)
 
                         seeds = keep.get('seeds', None)
                         if seeds:
                             self.clone_seeds(uuid, t1, t2, seeds)
                     target = g1.path
-                cleanup.pop()() # unlink(path-lock)
+                cleanup.pop()()  # unlink(path-lock)
                 try:
                     # fixme
                     os.unlink('%s-lock' % target)
                 except OSError:
                     pass
                 os.rename(path, target)
-                cleanup.pop() # unlink(path)
+                cleanup.pop()  # unlink(path)
                 # remove from index
                 self.collection.remove(uuid)
                 # open to re-index, bypass creds check, allow hooks to run
-#                with self.collection.graph(uuid, readonly=True):
+                # with self.collection.graph(uuid, readonly=True):
                 with self.collection.graph(uuid):
                     pass
             except (IOError, OSError) as e:
@@ -723,7 +742,7 @@ class Reset_UUID(_Input, Handler):
                 for x in cleanup:
                     try:
                         x()
-                    except:
+                    except Exception:
                         pass
 
     def clone_kv(self, src, dst):
@@ -742,6 +761,7 @@ class Reset_UUID(_Input, Handler):
             i += 1
             if i is limit:
                 break
+
 
 class D3_UUID(_Streamy, Handler):
     path = ('d3', UUID)
@@ -763,12 +783,12 @@ class D3_UUID(_Streamy, Handler):
             n = next(nodes)
             nmap[n.ID] = nidx
             nidx += 1
-            yield self.dumps({ 'data': n.as_dict() })
+            yield self.dumps({'data': n.as_dict()})
             for n in nodes:
                 yield ','
                 nmap[n.ID] = nidx
                 nidx += 1
-                yield self.dumps({ 'data': n.as_dict() })
+                yield self.dumps({'data': n.as_dict()})
         except StopIteration:
             pass
         yield '],"edges":['
@@ -778,21 +798,25 @@ class D3_UUID(_Streamy, Handler):
             yield self.dumps({
                 'data': e.as_dict(),
                 'source': nmap[e.srcID],
-                'target': nmap[e.tgtID] })
+                'target': nmap[e.tgtID]
+            })
             for e in edges:
                 yield ','
                 yield self.dumps({
                     'data': e.as_dict(),
                     'source': nmap[e.srcID],
-                    'target': nmap[e.tgtID] })
+                    'target': nmap[e.tgtID]
+                })
         except StopIteration:
             pass
         yield ']}\n'
+
 
 def exec_wrapper(code, **gvars):
     lvars = {}
     exec(code, gvars, lvars)
     return lvars
+
 
 class Graph_Exec(_Input, _Streamy):
     path = ('graph', 'exec')
@@ -827,15 +851,17 @@ class Graph_Exec(_Input, _Streamy):
     def _txns_uuids(self, uuids):
         for uuid in uuids:
             try:
-#                with self.graph(uuid, readonly=True, create=False, hook=False) as g:
+                # with self.graph(uuid, readonly=True, create=False, hook=False) as g:
                 with self.graph(uuid, create=False, hook=False) as g:
                     with g.transaction(write=False) as txn:
                         yield txn, uuid
-            except:
+            except Exception:
                 pass
+
 
 class Graph_UUID_Exec(_Input, _Streamy):
     path = ('graph', UUID, 'exec')
+
     @graphtxn(write=False)
     def post(self, g, txn, _, uuid, __):
         if self.content_type != 'application/python':
@@ -859,6 +885,7 @@ class Graph_UUID_Exec(_Input, _Streamy):
         except Exception as e:
             raise HTTPError(400, 'handler raised exception: %s' % e)
 
+
 class Graph_UUID_Meta(_Input):
     path = ('graph', UUID, 'meta')
 
@@ -870,11 +897,14 @@ class Graph_UUID_Meta(_Input):
     def put(self, g, txn, _, uuid, __):
         self.do_meta(txn, self.input())
 
+
 class Graph_UUID_Seeds(Handler, _Streamy):
     path = ('graph', UUID, 'seeds')
+
     @graphtxn(write=False)
     def get(self, g, txn, _, uuid, __):
         return self.stream(SeedTracker(txn).seeds)
+
 
 class Graph_UUID_Node_ID(_Input):
     path = ('graph', UUID, 'node', INT)
@@ -884,7 +914,7 @@ class Graph_UUID_Node_ID(_Input):
         try:
             return self.dumps(txn.node(ID=int(ID)).as_dict())
         except TypeError:
-            raise HTTPError(404,"not a node")
+            raise HTTPError(404, "not a node")
 
     @graphtxn(write=True)
     def put(self, g, txn, _, uuid, __, ID):
@@ -892,6 +922,7 @@ class Graph_UUID_Node_ID(_Input):
         data = self.input()
         data['ID'] = ID
         self.do_node(txn, data)
+
 
 class Graph_UUID_Edge_ID(_Input):
     path = ('graph', UUID, 'edge', INT)
@@ -909,6 +940,7 @@ class Graph_UUID_Edge_ID(_Input):
         data = self.input()
         data['ID'] = ID
         self.do_edge(txn, data)
+
 
 class KV_UUID(Handler):
     path = ('kv', UUID)
@@ -957,6 +989,7 @@ class KV_UUID(Handler):
         for k in kv.iterkeys():
             del kv[k]
 
+
 class KV_UUID_Key(Handler):
     path = ('kv', UUID, STRING)
 
@@ -988,8 +1021,9 @@ class KV_UUID_Key(Handler):
         except KeyError:
             raise HTTPError(404, 'key not found')
 
+
 class Static(Handler):
-    res = re.compile('^[^/]+\.(js|css|html)')
+    res = re.compile('^[^/]+\.(js|css|html)') # noqa
     mime = {
         '.html': 'text/html',
         '.css': 'text/css',
@@ -1004,7 +1038,7 @@ class Static(Handler):
             body = self.cache[resource]
         except KeyError:
             body = pkg_resources.resource_string(__name__, 'data/%s' % resource)
-            #self.cache[resource] = body
+            # self.cache[resource] = body
 
         extension = os.path.splitext(resource)[1]
         try:
@@ -1014,17 +1048,20 @@ class Static(Handler):
         self.res.headers.set('Content-Length', len(body))
         return body
 
+
 class View_UUID(Static):
     path = ('view', UUID)
 
     def get(self, _, uuid):
         return super(View_UUID, self).get(Static.path[0], self.param('style', 'd3v4') + '.html')
 
+
 class Favicon(Static):
     path = ('favicon.ico',)
 
     def get(self, _):
         return super(Favicon, self).get(Static.path[0], 'lemon.png')
+
 
 class Server(object):
     def __init__(self, collection_path=None, graph_opts=None, **kwargs):
@@ -1053,6 +1090,6 @@ class Server(object):
         global collection
         collection = None
 
-        handlers = tuple( H(collection_path=collection_path, graph_opts=graph_opts) for H in classes)
+        handlers = tuple(H(collection_path=collection_path, graph_opts=graph_opts) for H in classes)
         kwargs['handlers'] = handlers
         httpd(**kwargs)

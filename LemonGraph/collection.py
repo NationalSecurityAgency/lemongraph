@@ -1,4 +1,3 @@
-from collections import deque
 import datetime
 import errno
 import logging
@@ -6,15 +5,18 @@ import os
 import re
 import resource
 import signal
-from six import iteritems, iterkeys
 import sys
-from time import sleep, time
 import uuid
+from collections import deque
+from time import sleep, time
 
 from lazy import lazy
+
 from pysigset import suspended_signals
 
-from . import Graph, Serializer, Hooks, dirlist, Indexer, Query
+from six import iteritems, iterkeys
+
+from . import Graph, Hooks, Indexer, Query, Serializer, dirlist
 
 try:
     xrange          # Python 2
@@ -24,28 +26,32 @@ except NameError:
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
 
+
 def uuidgen():
     return str(uuid.uuid1())
+
 
 def uuid_to_utc_ts(u):
     return (uuid.UUID('{%s}' % u).time - 0x01b21dd213814000) // 1e7
 
+
 def uuid_to_utc(u):
     return datetime.datetime.utcfromtimestamp(uuid_to_utc_ts(u)).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
 
+
 class CollectionHooks(Hooks):
-    def __init__(self, uuid, collection):
-        self.uuid = uuid
+    def __init__(self, uuid_id, collection):
+        self.uuid_id = uuid_id
         self.collection = collection
 
     def opened(self, g):
-        self.collection.sync(self.uuid, g)
+        self.collection.sync(self.uuid_id, g)
 
     def updated(self, g, nextID, updates):
-        self.collection.sync_qflush(self.uuid, g)
+        self.collection.sync_qflush(self.uuid_id, g)
 
     def deleted(self):
-        self.collection.remove(self.uuid)
+        self.collection.remove(self.uuid_id)
 
 
 class StatusIndexer(Indexer):
@@ -64,6 +70,7 @@ class StatusIndexer(Indexer):
         except (KeyError, AttributeError):
             return ()
 
+
 class StatusIndex(object):
     domain = 'status'
     null = Serializer.null()
@@ -73,19 +80,19 @@ class StatusIndex(object):
         self.indexer = StatusIndexer()
         self._indexes = {}
 
-    def update(self, uuid, old, new):
+    def update(self, uuid_id, old, new):
         oldkeys = self.indexer.index(old)
         newkeys = self.indexer.index(new)
-        uuid = uuid.encode()
+        uuid_id = uuid_id.encode()
         for name, crc in oldkeys.difference(newkeys):
             keys = self._index(name)
             try:
-                keys.remove(crc + uuid)
+                keys.remove(crc + uuid_id)
             except KeyError:
                 pass
         for name, crc in newkeys.difference(oldkeys):
             keys = self._index(name)
-            keys.add(crc + uuid)
+            keys.add(crc + uuid_id)
 
     def _index(self, idx):
         try:
@@ -102,10 +109,11 @@ class StatusIndex(object):
         except KeyError:
             return
         for key in index.iterpfx(pfx=crc):
-            uuid = key[crclen:].decode()
-            status = self.ctx.statusDB[uuid]
+            uuid_id = key[crclen:].decode()
+            status = self.ctx.statusDB[uuid_id]
             if check(status):
-                yield uuid, status
+                yield uuid_id, status
+
 
 class Context(object):
     def __init__(self, collection, write=True):
@@ -130,20 +138,20 @@ class Context(object):
         if roles:
             seen = set()
             for role in roles:
-                for uuid, status in self.status_index.search('user_roles', '%s\0%s' % (user, role)):
-                    if uuid not in seen:
-                        seen.add(uuid)
-                        yield uuid, status
+                for uuid_id, status in self.status_index.search('user_roles', '%s\0%s' % (user, role)):
+                    if uuid_id not in seen:
+                        seen.add(uuid_id)
+                        yield uuid_id, status
         elif user:
-            for uuid, status in self.status_index.search('users', user):
-                yield uuid, status
+            for uuid_id, status in self.status_index.search('users', user):
+                yield uuid_id, status
         else:
             try:
                 all = iteritems(self.statusDB)
             except KeyError:
                 return
-            for uuid, status in all:
-                yield uuid, status
+            for uuid_id, status in all:
+                yield uuid_id, status
 
     def _filter_objs(self, gen, filters):
         filters = map(lambda pat: 'n(%s)' % pat, filters)
@@ -157,12 +165,12 @@ class Context(object):
     def graphs(self, enabled=None, user=None, roles=None, created_before=None, created_after=None, filters=None):
         gen = self._graphs(user, None if user is None else roles)
         if created_before is not None:
-            gen = ((uuid, status) for uuid, status in gen if uuid_to_utc_ts(uuid) < created_before)
+            gen = ((uuid_id, status) for uuid_id, status in gen if uuid_to_utc_ts(uuid_id) < created_before)
         if created_after is not None:
-            gen = ((uuid, status) for uuid, status in gen if uuid_to_utc_ts(uuid) > created_after)
+            gen = ((uuid_id, status) for uuid_id, status in gen if uuid_to_utc_ts(uuid_id) > created_after)
         if enabled is not None:
-            gen = ((uuid, status) for uuid, status in gen if status['enabled'] is enabled)
-        gen = (self._status_enrich(status, uuid) for uuid, status in gen)
+            gen = ((uuid_id, status) for uuid_id, status in gen if status['enabled'] is enabled)
+        gen = (self._status_enrich(status, uuid_id) for uuid_id, status in gen)
         if filters:
             gen = self._filter_objs(gen, filters)
         return gen
@@ -171,34 +179,34 @@ class Context(object):
         kwargs['ctx'] = self
         return self._graph(*args, **kwargs)
 
-    def _status_enrich(self, status, uuid):
-        output = { 'graph': uuid, 'id': uuid }
+    def _status_enrich(self, status, uuid_id):
+        output = {'graph': uuid_id, 'id': uuid_id}
         try:
-            output['meta'] = self.metaDB[uuid]
+            output['meta'] = self.metaDB[uuid_id]
         except KeyError:
             output['meta'] = {}
         for field in ('size', 'nodes_count', 'edges_count'):
             output[field] = status[field]
         output['maxID'] = status['nextID'] - 1
-        output['created'] = uuid_to_utc(uuid)
+        output['created'] = uuid_to_utc(uuid_id)
         return output
 
-    def status(self, uuid):
+    def status(self, uuid_id):
         try:
-            return self._status_enrich(self.statusDB[uuid], uuid)
+            return self._status_enrich(self.statusDB[uuid_id], uuid_id)
         except KeyError:
             pass
 
-    def sync(self, uuid, txn):
-        old_status, new_status = self._sync_status(uuid, txn)
-        self.status_index.update(uuid, old_status, new_status)
-        self.metaDB[uuid] = txn.as_dict()
+    def sync(self, uuid_id, txn):
+        old_status, new_status = self._sync_status(uuid_id, txn)
+        self.status_index.update(uuid_id, old_status, new_status)
+        self.metaDB[uuid_id] = txn.as_dict()
 
     @lazy
     def status_index(self):
         return StatusIndex(self)
 
-    def _sync_status(self, uuid, txn):
+    def _sync_status(self, uuid_id, txn):
         status = {'nextID': txn.nextID,
                   'size': txn.graph.size,
                   'nodes_count': txn.nodes_count(),
@@ -222,25 +230,25 @@ class Context(object):
                     user_roles = self.user_roles(txn, user)
                     if user_roles:
                         cache[user] = sorted(user_roles)
-        except: # fixme
+        except Exception:  # fixme
             pass
 
         try:
-            old_status = self.statusDB[uuid]
+            old_status = self.statusDB[uuid_id]
         except KeyError:
             old_status = None
-        self.statusDB[uuid] = status
+        self.statusDB[uuid_id] = status
 
         return old_status, status
 
-    def remove(self, uuid):
+    def remove(self, uuid_id):
         try:
-            status = self.statusDB.pop(uuid)
-            self.status_index.update(uuid, status, None)
+            status = self.statusDB.pop(uuid_id)
+            self.status_index.update(uuid_id, status, None)
         except KeyError:
             pass
         try:
-            del self.metaDB[uuid]
+            del self.metaDB[uuid_id]
         except KeyError:
             pass
 
@@ -312,14 +320,14 @@ class Collection(object):
 
     def _sync_uuids(self, uuids):
         with self.context(write=True) as ctx:
-            for uuid in uuids:
+            for uuid_id in uuids:
                 try:
-#                    with ctx.graph(uuid, readonly=True, create=False, hook=False) as g:
-                    with ctx.graph(uuid, create=False, hook=False) as g:
+                    # with ctx.graph(uuid, readonly=True, create=False, hook=False) as g:
+                    with ctx.graph(uuid_id, create=False, hook=False) as g:
                         with g.transaction(write=False) as txn:
-                            ctx.sync(uuid, txn)
+                            ctx.sync(uuid_id, txn)
                 except IOError as e:
-                    log.warning('error syncing graph %s: %s', uuid, str(e))
+                    log.warning('error syncing graph %s: %s', uuid_id, str(e))
 
         self.db.sync(force=True)
 
@@ -328,41 +336,41 @@ class Collection(object):
         for x in dirlist(self.dir):
             if len(x) != 39 or x[-3:] != '.db':
                 continue
-            uuid = x[0:36]
-            if UUID.match(uuid):
-                yield uuid
+            uuid_id = x[0:36]
+            if UUID.match(uuid_id):
+                yield uuid_id
 
-    def sync(self, uuid, g):
+    def sync(self, uuid_id, g):
         with self.context(write=True) as ctx:
             with g.transaction(write=False) as txn:
-                ctx.sync(uuid, txn)
+                ctx.sync(uuid_id, txn)
 
-    def sync_qflush(self, uuid, g):
+    def sync_qflush(self, uuid_id, g):
         with self.context(write=True) as ctx:
             with g.transaction(write=False) as txn:
                 try:
-                    ctx.sync(uuid, txn)
+                    ctx.sync(uuid_id, txn)
                 finally:
                     try:
-                        if uuid in ctx.updatedDB_idx:
+                        if uuid_id in ctx.updatedDB_idx:
                             return
                     except KeyError:
                         pass
-                    ctx.updatedDB.push(uuid)
-                    ctx.updatedDB_idx[uuid] = time()
+                    ctx.updatedDB.push(uuid_id)
+                    ctx.updatedDB_idx[uuid_id] = time()
 
-    def remove(self, uuid):
+    def remove(self, uuid_id):
         with self.context(write=True) as ctx:
-            ctx.remove(uuid)
+            ctx.remove(uuid_id)
 
-    def drop(self, uuid):
-        path = self.graph_path(uuid)
+    def drop(self, uuid_id):
+        path = self.graph_path(uuid_id)
         for x in (path, '%s-lock' % path):
             try:
                 os.unlink(x)
-            except:
+            except Exception:
                 pass
-        self.remove(uuid)
+        self.remove(uuid_id)
 
     def __del__(self):
         self.close()
@@ -373,18 +381,18 @@ class Collection(object):
             self.db = None
 
     # opens a graph
-    def graph(self, uuid=None, hook=True, ctx=None, user=None, roles=None, **kwargs):
-        if uuid is None and kwargs.get('create', False):
-            uuid = uuidgen()
-        for k,v in iteritems(self.graph_opts):
+    def graph(self, uuid_id=None, hook=True, ctx=None, user=None, roles=None, **kwargs):
+        if uuid_id is None and kwargs.get('create', False):
+            uuid_id = uuidgen()
+        for k, v in iteritems(self.graph_opts):
             if k not in kwargs:
                 kwargs[k] = v
         if hook:
-            kwargs['hooks'] = CollectionHooks(uuid, self)
+            kwargs['hooks'] = CollectionHooks(uuid_id, self)
         try:
-            g = Graph(self.graph_path(uuid), **kwargs)
-        except:
-            self.remove(uuid) if ctx is None else ctx.remove(uuid)
+            g = Graph(self.graph_path(uuid_id), **kwargs)
+        except Exception:
+            self.remove(uuid_id) if ctx is None else ctx.remove(uuid_id)
             raise
         if user is not None:
             # new graph - do not check creds
@@ -393,7 +401,7 @@ class Collection(object):
             else:
                 if not self.user_allowed(g, user, roles):
                     g.close()
-                    raise OSError(errno.EPERM, 'Permission denied', uuid)
+                    raise OSError(errno.EPERM, 'Permission denied', uuid_id)
         return g
 
     def user_allowed(self, g, user, roles):
@@ -414,19 +422,19 @@ class Collection(object):
 
     @lazy
     def _words(self):
-        return re.compile('\w+')
+        return re.compile('\w+') # noqa
 
-    def status(self, uuid):
+    def status(self, uuid_id):
         with self.context(write=False) as ctx:
-            return ctx.status(uuid)
+            return ctx.status(uuid_id)
 
     def graphs(self, enabled=None):
         with self.context(write=False) as ctx:
             for x in ctx.graphs(enabled=enabled):
                 yield x
 
-    def graph_path(self, uuid):
-        return "%s%s%s.db" % (self.dir, os.path.sep, uuid)
+    def graph_path(self, uuid_id):
+        return "%s%s%s.db" % (self.dir, os.path.sep, uuid_id)
 
     def context(self, write=True):
         return Context(self, write=write)
@@ -442,7 +450,7 @@ class Collection(object):
             try:
                 os.fstat(fd)
                 pad += 1
-            except:
+            except Exception:
                 pass
 
         # check limits
@@ -483,15 +491,15 @@ class Collection(object):
                         log.debug("syncing")
                         with self.context(write=True) as ctx:
                             uuids = ctx.updatedDB.pop(n=maxopen)
-                            for uuid in uuids:
-                                age = ctx.updatedDB_idx.pop(uuid)
+                            for uuid_id in uuids:
+                                age = ctx.updatedDB_idx.pop(uuid_id)
                                 try:
-                                    fd = os.open(self.graph_path(uuid), os.O_RDONLY)
+                                    fd = os.open(self.graph_path(uuid_id), os.O_RDONLY)
                                     todo.append(fd)
                                 except OSError as e:
                                     # may have been legitimately deleted already
                                     if e.errno != errno.ENOENT:
-                                        log.warning('error syncing graph %s: %s', uuid, str(e))
+                                        log.warning('error syncing graph %s: %s', uuid_id, str(e))
                             count += len(uuids)
                             backlog = len(ctx.updatedDB)
                         for fd in todo:

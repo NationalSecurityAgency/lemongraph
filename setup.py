@@ -1,13 +1,14 @@
 from __future__ import print_function
+
 import os
 import platform
 import stat
 import subprocess
 import sys
 
-from setuptools import setup
-
 from lg_cffi_setup import keywords_with_side_effects
+
+from setuptools import setup
 
 
 def git_submodule_init():

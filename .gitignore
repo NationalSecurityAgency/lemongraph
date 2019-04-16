@@ -15,3 +15,5 @@ LemonGraph/data/d3.v3.min.js
 LemonGraph/data/d3.v4.min.js
 LemonGraph/data/svg-crowbar.js
 deps/js
+.tox
+.eggs

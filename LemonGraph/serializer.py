@@ -1,7 +1,9 @@
-from . import ffi, lib, wire
-import msgpack as messagepack
+
 import collections
-import sys
+
+import msgpack as messagepack
+
+from . import ffi, lib, wire
 
 try:
     xrange          # Python 2
@@ -27,6 +29,7 @@ except NameError:
     # monkey patch that too
     def wrap_unpack_from():
         func = struct.unpack_from
+
         def unpack_from_wrapper(*args, **kwargs):
             if isinstance(args[1], bytearray):
                 args = list(args)
@@ -46,6 +49,7 @@ except NameError:
 
 def identity(x):
     return x
+
 
 class Serializer(object):
     @staticmethod
@@ -113,9 +117,10 @@ class Serializer(object):
         count = int(count)
         if count < 1:
             raise ValueError(count)
-        buffer = ffi.new('char[]', count*9)
+        buffer = ffi.new('char[]', count * 9)
         buffers = {}
         decoded = ffi.new('uint64_t[]', count)
+
         def encode(n):
             if len(n) != count:
                 raise ValueError(n)
@@ -139,6 +144,7 @@ class Serializer(object):
             raise ValueError(count)
         buffer = ffi.new('char[511]')
         decoded = ffi.new('uint64_t[]', count)
+
         def encode(n):
             if len(n) != count:
                 raise ValueError(n)
@@ -151,14 +157,14 @@ class Serializer(object):
             if size + strlen > 511:
                 raise ValueError()
 
-            buffer[size:size+strlen] = string
+            buffer[size:size + strlen] = string
             size += strlen
             return ffi.buffer(buffer, size)[:]
 
         def decode(b):
             size = lib.unpack_uints(count, decoded, b[:])
-            buf = ffi.buffer(buffer, size + decoded[count-1])
-            ret = list(int(decoded[i]) for i in xrange(0, count-1))
+            buf = ffi.buffer(buffer, size + decoded[count - 1])
+            ret = list(int(decoded[i]) for i in xrange(0, count - 1))
             ret.append(wire.decode(buf[size:]))
             return decode_type(ret)
 
