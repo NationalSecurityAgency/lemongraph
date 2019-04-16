@@ -1,12 +1,14 @@
 from __future__ import print_function
-from .. import Serializer, Adapters
+
+import logging
+import sys
+from getopt import GetoptError, gnu_getopt as getopt
+
+from . import Server
+from .. import Adapters, Serializer
 from ..collection import Collection
 from ..httpd import Graceful
-from . import Server
 
-import sys
-import logging
-from getopt import GetoptError, gnu_getopt as getopt
 
 class LogHandler(logging.StreamHandler):
     def __init__(self, stream=sys.stdout):
@@ -15,6 +17,7 @@ class LogHandler(logging.StreamHandler):
         fmt_date = '%Y-%m-%d %T %Z'
         formatter = logging.Formatter(fmt, fmt_date)
         self.setFormatter(formatter)
+
 
 def usage(msg=None, fh=sys.stderr):
     print('Usage: python -mLemonGraph.server <options> [graphs-dir]', file=fh)
@@ -36,12 +39,14 @@ def usage(msg=None, fh=sys.stderr):
         print(msg, file=fh)
     sys.exit(1)
 
+
 def seed_depth0():
     while True:
         txn, entry = yield
         # first checks stay w/in the entry - last has to instantiate the parent object
         if entry.is_property and entry.key == 'seed' and entry.value and entry.is_node_property:
             entry.parent['depth'] = 0
+
 
 def process_edge(txn, e, cost=1, inf=float('Inf')):
     # grab latest versions of endpoints
@@ -54,9 +59,11 @@ def process_edge(txn, e, cost=1, inf=float('Inf')):
     elif dt + cost < ds:
         src['depth'] = dt + cost
 
+
 def apply_cost(txn, prop):
     # cost value validity has already been enforced above
     process_edge(txn, prop.parent, cost=prop.value)
+
 
 def cascade_depth(txn, prop):
     # grab latest version of parent node
@@ -69,6 +76,7 @@ def cascade_depth(txn, prop):
         except KeyError:
             pass
         n2['depth'] = mindepth
+
 
 def update_depth_cost():
     while True:
@@ -83,6 +91,7 @@ def update_depth_cost():
             elif entry.key == 'cost':
                 if entry.is_edge_property:
                     apply_cost(txn, entry)
+
 
 def main():
     levels = ('NOTSET', 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')
@@ -141,7 +150,7 @@ def main():
         usage()
 
     all_logs = tuple("LemonGraph.%s" % x for x in ('httpd', 'collection', 'server'))
-    log_levels = dict( (k, default_level) for k in all_logs)
+    log_levels = dict((k, default_level) for k in all_logs)
     for token in logspec.split(','):
         try:
             target, level = token.split('=', 1)
@@ -162,11 +171,11 @@ def main():
         logger.addHandler(loghandler)
         logger.setLevel(getattr(logging, level.upper()))
 
-    graph_opts=dict(
+    graph_opts = dict(
         serialize_property_value=Serializer.msgpack(),
         adapters=Adapters(seed_depth0, update_depth_cost),
         nosync=nosync, nometasync=nometasync,
-        )
+    )
 
     # initialize the collection up front (which will re-create if missing)
     # before we turn on the web server
@@ -183,5 +192,6 @@ def main():
             collection.close()
 
     Server(collection_path=path, graph_opts=graph_opts, extra_procs={'syncd': _syncd}, host=ip, port=port, spawn=workers, timeout=timeout, buflen=buflen)
+
 
 main()

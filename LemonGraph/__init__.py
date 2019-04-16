@@ -1,4 +1,5 @@
 from __future__ import print_function
+
 try:
     from ._lemongraph_cffi import ffi, lib
 except ImportError:
@@ -14,20 +15,24 @@ try:
 except ImportError:
     import builtins as builtin
 
-from collections import deque
 import itertools
-from lazy import lazy
 import os
-from six import iteritems, itervalues
 import sys
+from collections import deque
 
-from .callableiterable import CallableIterableMethod
-from .hooks import Hooks
-from .dirlist import dirlist
-from .indexer import Indexer
-from .MatchLGQL import QueryCannotMatch, QuerySyntaxError
+from lazy import lazy
+
+from six import iteritems, itervalues
+
 from . import algorithms
 from . import wire
+from .callableiterable import CallableIterableMethod
+from .hooks import Hooks
+
+from .dirlist import dirlist # noqa
+# From Andrey: I'm not sure both these modules are needed here
+# from .indexer import Indexer
+# from .MatchLGQL import QueryCannotMatch, QuerySyntaxError
 
 # these imports happen at the bottom
 '''
@@ -37,6 +42,7 @@ from .fifo import Fifo
 from .serializer import Serializer
 from .sset import SSet
 '''
+
 
 # so I can easily create keys/items/values class
 # methods that behave as the caller expects
@@ -49,6 +55,7 @@ def listify_py2(func):
     def listify(*args, **kwargs):
         return list(func(*args, **kwargs))
     return listify
+
 
 # todo:
 #   think about splitting deletes off into its own btree so the log is truly append-only
@@ -69,7 +76,7 @@ def merge_values(a, b):
     if isinstance(b, dict):
         if isinstance(a, dict):
             for k, v in iteritems(b):
-                a[k] = merge_values(a.get(k,None), v)
+                a[k] = merge_values(a.get(k, None), v)
             return a
     elif isinstance(b, (tuple, list)):
         # also merge and sort lists, but do not descend into them
@@ -166,7 +173,7 @@ class Graph(object):
         path = self.path
         if self.nosubdir:
             os.unlink(path)
-            os.unlink(path+"-lock")
+            os.unlink(path + "-lock")
         else:
             os.unlink(os.path.join(path, 'data.mdb'))
             os.unlink(os.path.join(path, 'lock.mdb'))
@@ -306,11 +313,14 @@ class EndTransaction(Exception):
     def __init__(self, txn):
         self.txn = txn
 
+
 class AbortTransaction(EndTransaction):
     pass
 
+
 class CommitTransaction(EndTransaction):
     pass
+
 
 class Transaction(GraphItem):
     reserved = ()
@@ -330,9 +340,9 @@ class Transaction(GraphItem):
     # create a child transaction - not possible if DB_WRITEMAP was enabled (it is disabled)
     def transaction(self, write=None, beforeID=None):
         return Transaction(self.graph,
-            self.write if write is None else write,
-            self.b4ID(beforeID),
-            self._txn)
+                           self.write if write is None else write,
+                           self.b4ID(beforeID),
+                           self._txn)
 
     def __enter__(self):
         self._txn = lib.graph_txn_begin(self.graph._graph, self._parent, self.txn_flags)
@@ -497,7 +507,7 @@ class Transaction(GraphItem):
             if start == self.beforeID:
                 return
             try:
-                ret = self.entry(start, beforeID=start+1)
+                ret = self.entry(start, beforeID=start + 1)
             except IndexError:
                 return
             yield ret
@@ -543,7 +553,7 @@ class Transaction(GraphItem):
     def updates(self, **kwargs):
         """returns iterator for tuples of: node/edge before modification, node/edge after modification, the set of key names that changed, first and last txn ID to contribute to the delta, and the last logID processed"""
         changed = {}
-        batch=kwargs.pop('batch', 500)
+        batch = kwargs.pop('batch', 500)
         for target in self.scan(**kwargs):
             ID = target.ID
             updated = []
@@ -553,7 +563,7 @@ class Transaction(GraphItem):
             else:
                 updated.append((target, set(target)))
                 # new edges cause changes in referenced nodes' properties
-                if isinstance(target,Edge):
+                if isinstance(target, Edge):
                     updated.append((target.src, Node.reserved_src_updates))
                     updated.append((target.tgt, Node.reserved_tgt_updates))
 
@@ -578,6 +588,7 @@ class Transaction(GraphItem):
 
     def query(self, pattern, start=0, stop=0, cache=None, limit=0):
         q = Query((pattern,), cache={} if cache is None else cache)
+
         def just_chain():
             for _, chain in q.execute(self, start=start, stop=stop, limit=limit):
                 yield chain
@@ -680,14 +691,14 @@ class NodeEdgeProperty(GraphItem):
         self._lib_delete(self._txn, self._data)
 
     def __repr__(self):
-        pairs = ["%s: %s" % (repr(key),repr(value)) for (key, value) in self.iteritems()]
+        pairs = ["%s: %s" % (repr(key), repr(value)) for (key, value) in self.iteritems()]
         return '{' + ', '.join(pairs) + '}'
 
     def as_dict(self, trans=None, update=None, native=None):
         if trans is None:
-            ret = dict( (prop.key, prop.value) for prop in self.properties(native=native) )
+            ret = dict((prop.key, prop.value) for prop in self.properties(native=native))
         else:
-            ret = dict( (trans.get(prop.key, prop.key), prop.value) for prop in self.properties(native=native) )
+            ret = dict((trans.get(prop.key, prop.key), prop.value) for prop in self.properties(native=native))
         if update:
             ret.update(update)
         return ret
@@ -730,19 +741,19 @@ class Node(NodeEdgeProperty):
     _lib_resolve = lib.graph_node_resolve
     _lib_updateID = lib.graph_node_updateID
     directions = {
-        None:   0,
-        'in':   lib.GRAPH_DIR_IN,
-        'out':  lib.GRAPH_DIR_OUT,
+        None: 0,
+        'in': lib.GRAPH_DIR_IN,
+        'out': lib.GRAPH_DIR_OUT,
         'both': lib.GRAPH_DIR_BOTH,
     }
     code = 'N'
     pcode = 'n'
     discoverable = ('ID', 'type', 'value')
     reserved_src_updates = frozenset(('outbound_count', 'edge_count', 'neighbor_count', 'neighbor_types'))
-    reserved_tgt_updates = frozenset(('inbound_count',  'edge_count', 'neighbor_count', 'neighbor_types'))
+    reserved_tgt_updates = frozenset(('inbound_count', 'edge_count', 'neighbor_count', 'neighbor_types'))
     reserved_both = frozenset(('edges', 'edgeIDs', 'edge_count', 'neighbors', 'neighborIDs', 'neighbor_count', 'neighbor_types'))
     reserved_src_only = frozenset(('outbound', 'outboundIDs', 'outbound_count'))
-    reserved_tgt_only = frozenset(('inbound',  'inboundIDs',  'inbound_count'))
+    reserved_tgt_only = frozenset(('inbound', 'inboundIDs', 'inbound_count'))
     reserved_src = reserved_both | reserved_src_only
     reserved_tgt = reserved_both | reserved_tgt_only
     reserved_internal = frozenset(discoverable + ('typeID', 'valueID'))
@@ -824,7 +835,7 @@ class Node(NodeEdgeProperty):
     def neighbor_types(self):
         types = {}
         for node in self.neighbors:
-            types[node.type] = types.get(node.type,0) + 1
+            types[node.type] = types.get(node.type, 0) + 1
         return types
 
     @builtin.property
@@ -944,7 +955,7 @@ class Property(NodeEdgeProperty):
     _lib_updateID = lib.graph_prop_updateID
     pcode = 'p'
     discoverable = ('ID', 'key', 'value', 'parentID')
-    reserved     = frozenset(discoverable + ('parent', 'keyID', 'valueID'))
+    reserved = frozenset(discoverable + ('parent', 'keyID', 'valueID'))
     is_property = True
 
     # methods - note that we do not cache the key/value, as both:
@@ -1034,6 +1045,7 @@ class Iterator(object):
 
     next = __next__
 
+
 # constructor glue
 ConstructorsByRecType[lib.GRAPH_NODE] = Node
 ConstructorsByRecType[lib.GRAPH_EDGE] = Edge
@@ -1088,8 +1100,8 @@ class Adapters(object):
         else:
             raise Exception("no handlers!")
 
-from .kv import KV
-from .query import Query
-from .fifo import Fifo
-from .serializer import Serializer
-from .sset import SSet
+from .fifo import Fifo # noqa
+from .kv import KV # noqa
+from .query import Query # noqa
+from .serializer import Serializer # noqa
+from .sset import SSet # noqa

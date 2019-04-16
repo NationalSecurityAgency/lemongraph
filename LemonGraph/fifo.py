@@ -1,16 +1,17 @@
-from . import lib, ffi, lazy
-from .serializer import Serializer
-
 from collections import deque
 
+from . import ffi, lazy, lib
+from .serializer import Serializer
+
 UNSPECIFIED = object()
+
 
 class Fifo(object):
     def __init__(self, txn, domain, map_values=False, serialize_domain=Serializer(), serialize_value=Serializer()):
         self.txn = txn
         self._txn = txn._txn
         self.domain = domain
-        self.serialize_value  = serialize_value
+        self.serialize_value = serialize_value
         enc = serialize_domain.encode(domain)
         flags = lib.LG_KV_MAP_DATA if map_values else 0
         self._dlen = ffi.new('size_t *')
@@ -96,7 +97,7 @@ class Fifo(object):
             return 0
         last = self.serialize_key.decode(ffi.buffer(last, self._dlen[0])[:])
         for idx, _ in KVIterator(self):
-            return 1+last-idx
+            return 1 + last - idx
         raise Exception
 
     def __del__(self):
@@ -104,10 +105,11 @@ class Fifo(object):
             lib.kv_deref(self._kv)
             self._kv = None
 
+
 class KVIterator(object):
     def __init__(self, kv):
-        self.serialize_key    = kv.serialize_key
-        self.serialize_value  = kv.serialize_value
+        self.serialize_key = kv.serialize_key
+        self.serialize_value = kv.serialize_value
         self._key = ffi.new('void **')
         self._data = ffi.new('void **')
         self._klen = ffi.new('size_t *')

@@ -1,32 +1,33 @@
 from __future__ import print_function
-import re
-from six import iteritems
-import sys
-import itertools
 
+import itertools
+import re
+import sys
 from collections import defaultdict, deque
+
+from six import iteritems
 
 SQ = '(?:\'(?:[^\'\\\\]|\\\\[\'\"\\\\])*\')'
 DQ = '(?:\"(?:[^\"\\\\]|\\\\[\'\"\\\\])*\")'
-BW = '(?:(?:(?![0-9])\w)\w*)'
+BW = '(?:(?:(?![0-9])\w)\w*)' # noqa
 
 STR = re.compile('(?:%s|%s)' % (DQ, SQ), re.UNICODE)
 WHITE = re.compile(r'\s+', re.UNICODE)
-KEY = re.compile(r'(?:%s|%s|%s)' % (BW, SQ, DQ), re.IGNORECASE|re.UNICODE)
+KEY = re.compile(r'(?:%s|%s|%s)' % (BW, SQ, DQ), re.IGNORECASE | re.UNICODE)
 DOT = re.compile(r'(?:\.)', re.UNICODE)
-NULL = re.compile(r'(?:None|null)', re.IGNORECASE|re.UNICODE)
-TRUE = re.compile(r'(?:true)', re.IGNORECASE|re.UNICODE)
-FALSE = re.compile(r'(?:false)', re.IGNORECASE|re.UNICODE)
+NULL = re.compile(r'(?:None|null)', re.IGNORECASE | re.UNICODE)
+TRUE = re.compile(r'(?:true)', re.IGNORECASE | re.UNICODE)
+FALSE = re.compile(r'(?:false)', re.IGNORECASE | re.UNICODE)
 TYPES = re.compile(r'(?:boolean|string|number|array|object)', re.UNICODE)
 OCT = re.compile(r'(?:-?0[0-7]+)', re.UNICODE)
-HEX = re.compile(r'(?:-?0x[0-9a-f]+)', re.IGNORECASE|re.UNICODE)
-NUM = re.compile(r'(?:[0-9.e+-]+)', re.IGNORECASE|re.UNICODE)
-#REGEX = re.compile(r'(?:/((?:[^\/]|\\.)*)/([ilmsxu]*))', re.UNICODE)
+HEX = re.compile(r'(?:-?0x[0-9a-f]+)', re.IGNORECASE | re.UNICODE)
+NUM = re.compile(r'(?:[0-9.e+-]+)', re.IGNORECASE | re.UNICODE)
+# REGEX = re.compile(r'(?:/((?:[^\/]|\\.)*)/([ilmsxu]*))', re.UNICODE)
 REGEX = re.compile(r'(?:/((?:[^/]|\\.)*)/([imsx]*))', re.UNICODE)
 LIST_BEGIN = re.compile(r'\[', re.UNICODE)
 LIST_END = re.compile(r'\]', re.UNICODE)
 COMMA = re.compile(r',[\s,]*', re.UNICODE)
-OBJ_BEGIN = re.compile(r'([@]*)\b([NE])(?::(%s(?:,%s)*?))?\(' % (BW, BW), re.IGNORECASE|re.UNICODE)
+OBJ_BEGIN = re.compile(r'([@]*)\b([NE])(?::(%s(?:,%s)*?))?\(' % (BW, BW), re.IGNORECASE | re.UNICODE)
 OBJ_END = re.compile(r'\)', re.UNICODE)
 LINK_UNIQ = re.compile(r'(?:<?->?)', re.UNICODE)
 CLEANER = re.compile(r'\\(.)', re.UNICODE)
@@ -37,25 +38,25 @@ ALIAS = re.compile(r'((?:[1-9][0-9]*)|%s)\(' % BW, re.UNICODE)
 
 RANGE = (STR, OCT, NUM, HEX)
 OP_NEXT_BEGIN = {
-    ':'  : (TYPES, LIST_BEGIN),
-    '!:' : (TYPES, LIST_BEGIN),
-    '='  : (STR, OCT, NUM, HEX, TRUE, FALSE, NULL, LIST_BEGIN),
-    '!=' : (STR, OCT, NUM, HEX, TRUE, FALSE, NULL, LIST_BEGIN),
-    '~'  : (REGEX, LIST_BEGIN),
-    '!~' : (REGEX, LIST_BEGIN),
-    '<'  : RANGE,
-    '<=' : RANGE,
-    '>'  : RANGE,
-    '>=' : RANGE,
+    ':'  : (TYPES, LIST_BEGIN), # noqa
+    '!:' : (TYPES, LIST_BEGIN), # noqa
+    '='  : (STR, OCT, NUM, HEX, TRUE, FALSE, NULL, LIST_BEGIN), # noqa
+    '!=' : (STR, OCT, NUM, HEX, TRUE, FALSE, NULL, LIST_BEGIN), # noqa
+    '~'  : (REGEX, LIST_BEGIN), # noqa
+    '!~' : (REGEX, LIST_BEGIN), # noqa
+    '<'  : RANGE, # noqa
+    '<=' : RANGE, # noqa
+    '>'  : RANGE, # noqa
+    '>=' : RANGE, # noqa
 }
 
 OP_NEXT_END = {
-    ':'  : (TYPES, LIST_END),
-    '!:' : (TYPES, LIST_END),
-    '='  : (STR, OCT, NUM, HEX, TRUE, FALSE, NULL, LIST_END),
-    '!=' : (STR, OCT, NUM, HEX, TRUE, FALSE, NULL, LIST_END),
-    '~'  : (REGEX, LIST_END),
-    '!~' : (REGEX, LIST_END),
+    ':'  : (TYPES, LIST_END), # noqa
+    '!:' : (TYPES, LIST_END), # noqa
+    '='  : (STR, OCT, NUM, HEX, TRUE, FALSE, NULL, LIST_END), # noqa
+    '!=' : (STR, OCT, NUM, HEX, TRUE, FALSE, NULL, LIST_END), # noqa
+    '~'  : (REGEX, LIST_END), # noqa
+    '!~' : (REGEX, LIST_END), # noqa
 }
 
 OTHERTYPE = {
@@ -74,17 +75,17 @@ RE_FLAGS = {
 
 QUOTES = "\'\""
 REVERSE = {
-    'both' : 'both',
-    'in'   : 'out',
-    'out'  : 'in',
+    'both': 'both',
+    'in': 'out',
+    'out': 'in',
 }
 
 MERGE = {
-    '=':  lambda a, b: a.intersection(b),
+    '=': lambda a, b: a.intersection(b),
     '!=': lambda a, b: a.union(b),
-    '~':  lambda a, b: a.intersection(b),
+    '~': lambda a, b: a.intersection(b),
     '!~': lambda a, b: a.union(b),
-    ':':  lambda a, b: a.intersection(b),
+    ':': lambda a, b: a.intersection(b),
     '!:': lambda a, b: a.union(b),
 }
 
@@ -95,41 +96,44 @@ RANGE_OP = {
     '<=': lambda a, b: a <= b,
 }
 
+
 # sigh - bools are a subclass of int
 def is_type(val, types):
     if isinstance(val, bool) and bool not in types:
         return False
     return isinstance(val, tuple(types))
 
+
 FILTER_OPS = ('!=', ':', '!:', '~', '!~')
 FILTER = {
-    '!=' : lambda d1, d2: set(v for v in d1 if v not in d2),
-    ':'  : lambda d1, d2: set(v for v in d1 if is_type(v, d2)),
-    '!:' : lambda d1, d2: set(v for v in d1 if not is_type(v, d2)),
-    '~'  : lambda d1, d2: set(v for v in d1 if _match_at_least_one(v, d2)),
-    '!~' : lambda d1, d2: set(v for v in d1 if not _match_at_least_one(v, d2)),
+    '!=' : lambda d1, d2: set(v for v in d1 if v not in d2), # noqa
+    ':'  : lambda d1, d2: set(v for v in d1 if is_type(v, d2)), # noqa
+    '!:' : lambda d1, d2: set(v for v in d1 if not is_type(v, d2)), # noqa
+    '~'  : lambda d1, d2: set(v for v in d1 if _match_at_least_one(v, d2)), # noqa
+    '!~' : lambda d1, d2: set(v for v in d1 if not _match_at_least_one(v, d2)), # noqa
 }
 
 # tests are (key-list, op, vals)
 TEST_EVAL = {
-    '='      : lambda val, vals: val in vals,
-    '!='     : lambda val, vals: val not in vals,
-    '~'      : lambda val, vals: _match_at_least_one(val, vals),
-    '!~'     : lambda val, vals: not _match_at_least_one(val, vals),
+    '='      : lambda val, vals: val in vals, # noqa
+    '!='     : lambda val, vals: val not in vals, # noqa
+    '~'      : lambda val, vals: _match_at_least_one(val, vals), # noqa
+    '!~'     : lambda val, vals: not _match_at_least_one(val, vals), # noqa
 
     # resolving the key already succeeded - that's all we need
-    'exists' : lambda val, vals: True,
+    'exists' : lambda val, vals: True, # noqa
 
     # range operators are guaranteed to have exactly one value
-    '>'      : lambda val, vals: val >  vals[0],
-    '>='     : lambda val, vals: val >= vals[0],
-    '<'      : lambda val, vals: val <  vals[0],
-    '<='     : lambda val, vals: val <= vals[0],
+    '>'      : lambda val, vals: val >  vals[0], # noqa
+    '>='     : lambda val, vals: val >= vals[0], # noqa
+    '<'      : lambda val, vals: val <  vals[0], # noqa
+    '<='     : lambda val, vals: val <= vals[0], # noqa
 
     # type operators
-    ':'      : lambda val, vals: is_type(val, vals),
-    '!:'     : lambda val, vals: not is_type(val, vals),
+    ':'      : lambda val, vals: is_type(val, vals), # noqa
+    '!:'     : lambda val, vals: not is_type(val, vals), # noqa
 }
+
 
 def _clean_num(m, val, _):
     try:
@@ -141,6 +145,7 @@ def _clean_num(m, val, _):
             raise ValueError(m.start())
     return val
 
+
 def _clean_regex(m, val, cache):
     flags = re.UNICODE
     for f in m.group(2):
@@ -150,6 +155,7 @@ def _clean_regex(m, val, cache):
     except KeyError:
         ret = cache[(m.group(1), flags)] = re.compile(m.group(1), flags)
     return ret
+
 
 TYPES_MAP = {
     'boolean': bool,
@@ -171,6 +177,7 @@ CLEAN_VAL = {
     TYPES: lambda m, val, _: TYPES_MAP[val],
 }
 
+
 def _match_at_least_one(val, rgxs):
     try:
         for rgx in rgxs:
@@ -179,6 +186,7 @@ def _match_at_least_one(val, rgxs):
     except TypeError:
         pass
     return False
+
 
 class QueryCannotMatch(Exception):
     def __init__(self, query):
@@ -189,6 +197,7 @@ class QueryCannotMatch(Exception):
 
     def __repr__(self):
         return 'QueryCannotMatch(%s)' % repr(self.query)
+
 
 class QuerySyntaxError(Exception):
     def __init__(self, query, pos, message):
@@ -229,9 +238,9 @@ class MatchLGQL(object):
 
             arrow = m.group(0)
             if len(arrow) == 2:
-                link, rlink = ('out','in') if arrow[-1] == '>' else ('in', 'out')
+                link, rlink = ('out', 'in') if arrow[-1] == '>' else ('in', 'out')
             else:
-                link = rlink = dir = 'both'
+                link = rlink = dir = 'both' # noqa
 
             info['next'] = link
 
@@ -242,7 +251,7 @@ class MatchLGQL(object):
             if info['type'] == self.matches[-1]['type']:
                 inferred = {
                     'type': OTHERTYPE[info['type']],
-                    'tests' : tuple([(('type',), 'exists', ())]),
+                    'tests': tuple([(('type',), 'exists', ())]),
                     'next': link,
                     'prev': rlink,
                     'keep': False,
@@ -294,7 +303,7 @@ class MatchLGQL(object):
             if required:
                 raise self.syntax_error('missing required alias: %s' % normalized)
             # minimum info obj
-            infos = ({ 'tests': deque() },)
+            infos = ({'tests': deque()},)
         self.required_filters.discard(normalized)
         pos = self.pos
         for info in infos:
@@ -511,11 +520,11 @@ class MatchLGQL(object):
         info['rank2'] = 0
         try:
             offset = 0 if info['type'] == 'N' else 1
-            accel['type']  = tuple(d[(('type',), '=')])
+            accel['type'] = tuple(d[(('type',), '=')])
             info['rank'] = 4 + offset
             info['rank2'] = len(accel['type'])
             # value is only useful if type is there
-            accel['value'] = tuple(d[(('value',),'=')])
+            accel['value'] = tuple(d[(('value',), '=')])
             info['rank'] = 2 + offset
             info['rank2'] *= len(accel['value'])
         except KeyError:
@@ -523,7 +532,7 @@ class MatchLGQL(object):
 
         # add id accelerator
         try:
-            accel['ID']  = tuple(d[(('ID',), '=')])
+            accel['ID'] = tuple(d[(('ID',), '=')])
             info['rank'] = 0 if info['type'] == 'E' else 1
             info['rank2'] = len(accel['ID'])
         except KeyError:
@@ -546,7 +555,7 @@ class MatchLGQL(object):
         rank = test['rank']
         accel = test['accel']
         funcs = (txn.nodes, txn.edges)
-        if rank in (0,1):
+        if rank in (0, 1):
             funcs = (txn.edge, txn.node)
             for ID in accel['ID']:
                 try:
@@ -554,7 +563,7 @@ class MatchLGQL(object):
                 except TypeError:
                     pass
         elif rank in (2,):
-            for t,v in itertools.product(accel['type'], accel['value']):
+            for t, v in itertools.product(accel['type'], accel['value']):
                 seed = txn.node(type=t, value=v, query=True, beforeID=beforeID)
                 if seed:
                     yield seed
@@ -564,7 +573,7 @@ class MatchLGQL(object):
                 for seed in txn.edges(type=t, beforeID=beforeID):
                     if seed.value in vals:
                         yield seed
-        elif rank in (4,5):
+        elif rank in (4, 5):
             for t in accel['type']:
                 for seed in funcs[rank % 2](type=t, beforeID=beforeID):
                     yield seed
@@ -575,7 +584,7 @@ class MatchLGQL(object):
     def dump(self, fh=sys.stdout):
         print('[', file=fh)
         for p in self.matches:
-            pre = dict( (key, val) for key, val in iteritems(p) if key != 'tests' )
+            pre = dict((key, val) for key, val in iteritems(p) if key != 'tests')
             if p['tests']:
                 print('\t%s:[' % pre, file=fh)
                 for test in p['tests']:
@@ -603,6 +612,7 @@ class MatchLGQL(object):
 #                return False
 #        return True
 
+
 def eval_test(obj, test):
     target = obj
     try:
@@ -611,6 +621,7 @@ def eval_test(obj, test):
     except Exception:
         return False
     return TEST_EVAL[test[1]](target, test[2])
+
 
 class MatchCTX(object):
     link = (None, 'next', 'prev')
@@ -621,7 +632,7 @@ class MatchCTX(object):
         self.next = next
         self.match = match
         self.chain = deque()
-        self.uniq = tuple(i for i,x in enumerate(match.matches) if x['uniq'])
+        self.uniq = tuple(i for i, x in enumerate(match.matches) if x['uniq'])
         self.seen = deque()
 
     def push(self, target, delta):

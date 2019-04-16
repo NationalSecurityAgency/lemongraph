@@ -1,14 +1,15 @@
-from . import lib, ffi, wire
+from . import ffi, lib, wire
 from .serializer import Serializer
 
 UNSPECIFIED = object()
+
 
 class SSet(object):
     def __init__(self, txn, domain, map_values=False, serialize_domain=Serializer(), serialize_value=Serializer()):
         self.txn = txn
         self._txn = txn._txn
         self.domain = domain
-        self.serialize_value  = serialize_value
+        self.serialize_value = serialize_value
         enc = serialize_domain.encode(domain)
         flags = 0
         if map_values:
@@ -72,9 +73,10 @@ class SSet(object):
             return False
         return True
 
+
 class SSetIterator(object):
     def __init__(self, kv, handler, pfx=None):
-        self.serialize_value  = kv.serialize_value
+        self.serialize_value = kv.serialize_value
         self._key = ffi.new('void **')
         self._data = ffi.new('void **')
         self._klen = ffi.new('size_t *')

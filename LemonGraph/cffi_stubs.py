@@ -240,7 +240,7 @@ db_snapshot_t graph_snapshot_new(graph_t g, int compact);
 
 C_KEYWORDS = dict(
     sources=['deps/lmdb/libraries/liblmdb/mdb.c', 'deps/lmdb/libraries/liblmdb/midl.c', 'lib/lemongraph.c', 'lib/db.c'],
-    include_dirs=['lib','deps/lmdb/libraries/liblmdb'],
+    include_dirs=['lib', 'deps/lmdb/libraries/liblmdb'],
     libraries=['z'],
 )
 

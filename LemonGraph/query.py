@@ -1,9 +1,12 @@
-from collections import deque, defaultdict
+
 import itertools
+from collections import defaultdict, deque
+
 from six import iteritems, iterkeys
 
-from . import Node, Edge
-from .MatchLGQL import MatchLGQL, MatchCTX, QueryCannotMatch, eval_test
+from . import Edge, Node
+from .MatchLGQL import MatchCTX, MatchLGQL, QueryCannotMatch, eval_test
+
 
 class Query(object):
     magic = {
@@ -32,15 +35,14 @@ class Query(object):
         compiled = deque()
         for p_idx, p in enumerate(patterns):
             try:
-                c = self.cache[('p',p)]
+                c = self.cache[('p', p)]
             except KeyError:
                 try:
-                    c = self.cache[('p',p)] = MatchLGQL(p, cache=self.cache)
+                    c = self.cache[('p', p)] = MatchLGQL(p, cache=self.cache)
                 except QueryCannotMatch:
-                    c = self.cache[('p',p)] = None
+                    c = self.cache[('p', p)] = None
             compiled.append(c)
         self.compiled = self.cache[('c',) + patterns] = tuple(compiled)
-
 
     def _gen_handlers(self):
         if self.handlers is not None:
@@ -52,7 +54,7 @@ class Query(object):
         except KeyError:
             pass
 
-        setdict = lambda: defaultdict(set)
+        setdict = lambda: defaultdict(set) # noqa
         triggers = defaultdict(setdict)
         triggers['n'] = defaultdict(setdict)
         triggers['e'] = defaultdict(setdict)
@@ -61,7 +63,7 @@ class Query(object):
             if c is None:
                 continue
             for idx, match in enumerate(c.matches):
-                target_type = match['type'] # N or E
+                target_type = match['type']  # N or E
                 jump = self.magic[target_type]
                 toc = (p_idx, idx)
                 for test in match['tests']:
@@ -78,10 +80,10 @@ class Query(object):
         # squish down to regular dicts and frozensets
         for code in iterkeys(triggers):
             if code in 'ne':
-                triggers[code] = dict( (k0, dict( (test, frozenset(tocs)) for test, tocs in iteritems(d) )) for k0, d in iteritems(triggers[code]) )
+                triggers[code] = dict((k0, dict((test, frozenset(tocs)) for test, tocs in iteritems(d))) for k0, d in iteritems(triggers[code]))
             else:
-                triggers[code] = dict( (test, frozenset(tocs)) for test, tocs in iteritems(triggers[code]) )
-        triggers = dict( (k, v) for k, v in iteritems(triggers) if v )
+                triggers[code] = dict((test, frozenset(tocs)) for test, tocs in iteritems(triggers[code]))
+        triggers = dict((k, v) for k, v in iteritems(triggers) if v)
 
         edge_funcs = deque()
         if 'E' in triggers:
@@ -102,11 +104,13 @@ class Query(object):
 
         if edge_funcs:
             edge_funcs = tuple(edge_funcs)
+
             def _edge_handler(target):
                 seen = set()
                 for func in edge_funcs:
                     for ret in func(target, seen):
                         yield ret
+
             def _edge_handler2(target):
                 seen = set()
                 h = deque()
@@ -162,7 +166,7 @@ class Query(object):
                 continue
             ctx = MatchCTX(c)
             p = self.patterns[p_idx]
-            for seed in c.seeds(txn, beforeID=(stop+1) if stop else None):
+            for seed in c.seeds(txn, beforeID=(stop + 1) if stop else None):
                 yield (p, ctx.matches(seed, idx=c.best))
 
     def validate(self, *chains):
@@ -174,7 +178,7 @@ class Query(object):
             try:
                 ctxs_by_len[len(c.keep)][p] = MatchCTX(c)
             except KeyError:
-                ctxs_by_len[len(c.keep)] = { p: MatchCTX(c) }
+                ctxs_by_len[len(c.keep)] = {p: MatchCTX(c)}
 
         for chain in chains:
             if not isinstance(chain, tuple):

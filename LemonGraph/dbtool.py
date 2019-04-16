@@ -1,12 +1,14 @@
 from __future__ import print_function
-from . import Graph, Serializer, QuerySyntaxError
 
 import os
 import re
 import readline
-from six import iteritems
 import sys
 import time
+
+from six import iteritems
+
+from . import Graph, QuerySyntaxError, Serializer
 
 try:
     raw_input          # Python 2
@@ -28,18 +30,19 @@ To set streaming query mode, enter a numeric start,stop tuple or a non-zero star
 
 To query, enter one or more query patterns, joined by semi-colons.
 To force streaming or ad-hoc mode, the line may be preceded by:
-	start,stop:
+    start,stop:
 or just:
-	start:
+    start:
 
 Examples:
-	400,500:n()
-	n(type="foo")->n()
-	1:e(type="bar")
+    400,500:n()
+    n(type="foo")->n()
+    1:e(type="bar")
 '''
 
 RANGE1 = re.compile(r'^(\d+)(?:\s*,\s*(\d+))?$')
 RANGE2 = re.compile(r'^(\d+)(?:\s*,\s*(\d+))?\s*:\s*')
+
 
 def parse_range(m, default=None):
     a = int(m.group(1))
@@ -48,6 +51,7 @@ def parse_range(m, default=None):
     except TypeError:
         b = 0
     return a, b
+
 
 def do_query(txn, query, start=0, stop=0, interactive=False):
     m = RANGE2.match(query)
@@ -65,7 +69,7 @@ def do_query(txn, query, start=0, stop=0, interactive=False):
             mode = 'dump'
             total = None
         elif 'g' == query:
-            print(dict( (k, v) for k,v in iteritems(txn) ))
+            print(dict((k, v) for k, v in iteritems(txn)))
             mode = 'graph properties'
             total = None
         elif len(queries) > 1:
@@ -83,7 +87,7 @@ def do_query(txn, query, start=0, stop=0, interactive=False):
         else:
             raise
     tstop = time.time()
-    return total, tstop-tstart, mode
+    return total, tstop - tstart, mode
 
 
 def main(g):
@@ -97,15 +101,15 @@ def main(g):
         if os.isatty(sys.stdin.fileno()):
             while True:
                 if prompt is None:
-                    prompt = '%s> ' % (repr((start, stop) if stop else (start,lastID)) if start else lastID)
+                    prompt = '%s> ' % (repr((start, stop) if stop else (start, lastID)) if start else lastID)
 
                 try:
                     line = raw_input(prompt)
                     while True:
                         hlen = readline.get_current_history_length()
-                        if hlen < 2 or readline.get_history_item(hlen-1) != readline.get_history_item(hlen-2):
+                        if hlen < 2 or readline.get_history_item(hlen - 1) != readline.get_history_item(hlen - 2):
                             break
-                        readline.remove_history_item(hlen-1)
+                        readline.remove_history_item(hlen - 1)
                     line = line.strip()
                 except KeyboardInterrupt:
                     continue
@@ -121,7 +125,7 @@ def main(g):
                     prompt = None
                     line = None
 
-                elif line in ('help','?'):
+                elif line in ('help', '?'):
                     print(HELP)
                     line = None
 
@@ -157,6 +161,7 @@ def main(g):
         line = line.strip()
         with g.transaction(write=False) as txn:
             do_query(txn, line)
+
 
 if '__main__' == __name__:
     if len(sys.argv) != 2:

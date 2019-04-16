@@ -2,10 +2,16 @@ import os
 import tempfile
 import unittest
 
-from LemonGraph import Graph, Serializer, dirlist, Query
+from LemonGraph import Graph, Query, Serializer, dirlist
 
-node = lambda i: dict((k, Nodes[i][k]) for k in ('type', 'value'))
-edge = lambda i: dict((k, Edges[i][k]) for k in ('type', 'value', 'src', 'tgt'))
+
+def node(i):
+    return dict((k, Nodes[i][k]) for k in ('type', 'value'))
+
+
+def edge(i):
+    return dict((k, Edges[i][k]) for k in ('type', 'value', 'src', 'tgt'))
+
 
 Nodes = [
     {'type': 'foo', 'value': 'bar', 'properties': {'np1k': 'np1v'}},
@@ -226,6 +232,7 @@ class TestGraph(unittest.TestCase):
 class TestAlgorithms(unittest.TestCase):
     serializer = Serializer.msgpack()
     # each test_foo() method is wrapped w/ setup/teardown around it, so each test has a fresh graph
+
     def setUp(self):
         fd, path = tempfile.mkstemp()
         os.close(fd)
@@ -281,7 +288,7 @@ class TestAlgorithms(unittest.TestCase):
               e0b   e1b
                 \   /
                  n1b
-            '''
+            ''' # noqa
             n0 = txn.node(type='foo', value='0')
             n1a = txn.node(type='foo', value='1a')
             n1b = txn.node(type='foo', value='1b')
@@ -300,7 +307,6 @@ class TestAlgorithms(unittest.TestCase):
 
             # use default cost to make it find the upper path again
             self.assertPathEqual(n0.shortest_path(n2, cost_field='cost', cost_default=0.5), (n0, e0a, n1a, e1a, n2))
-
 
     def assertPathEqual(self, a, b):
         self.assertEqual(type(a), type(b))
@@ -352,10 +358,11 @@ class TestSerializers(unittest.TestCase):
 
     def test_msgpack(self):
         s = Serializer.msgpack()
-        a = { 'foo': 'bar', u'foo\u2020': u'bar\u2020' }
+        a = {'foo': 'bar', u'foo\u2020': u'bar\u2020'}
         b = s.encode(a)
         c = s.decode(b)
         self.assertEqual(a, c)
+
 
 class TestDL(unittest.TestCase):
     def test_dirlist(self):

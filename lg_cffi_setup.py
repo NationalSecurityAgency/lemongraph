@@ -1,6 +1,7 @@
 # adapted from https://caremad.io/2015/06/distributing-a-cffi-project-redux/ on 18 May 2016
 
 from distutils.command.build import build
+
 from setuptools.command.install import install
 
 SETUP_REQUIRES_ERROR = (

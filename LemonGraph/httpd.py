@@ -1,34 +1,38 @@
 # stock
-from collections import deque
+
 import logging
 import multiprocessing
 import os
 import re
 import signal
 import socket
-from six import itervalues
-from six.moves.urllib_parse import urlsplit
 import sys
 import time
 import traceback
 import zlib
+from collections import deque
+
+from lazy import lazy
+
+from pysigset import suspended_signals
+
+from six import itervalues
+from six.moves.urllib_parse import urlsplit
 
 from . import lib, wire
 
 try:
     import ujson
+
     def json_encode(x):
         return ujson.dumps(x, escape_forward_slashes=False, ensure_ascii=False)
     json_decode = ujson.loads
 except ImportError:
     import json
+
     def json_encode(x):
         return json.dumps(x, separators=(',', ':'), ensure_ascii=False)
-    json_decode = lambda x: json.loads(wire.decode(x))
-
-# pypi
-from lazy import lazy
-from pysigset import suspended_signals
+    json_decode = lambda x: json.loads(wire.decode(x)) # noqa
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
@@ -39,13 +43,16 @@ loglevels = {
     'debug': log.debug,
 }
 
+
 def _generator():
     yield
+
 
 generator = type(_generator())
 iterator = type(iter(''))
 string_bin = type(b'')
 string_uni = type(u'')
+
 
 class Disconnected(Exception):
     def __init__(self, why, level='warn'):
@@ -58,6 +65,7 @@ class Disconnected(Exception):
 
     def __str__(self):
         return 'disconnected: %s' % self.why
+
 
 class ErrorCompleted(Exception):
     pass
@@ -115,13 +123,13 @@ class HTTPMethods(object):
 class Chunk(object):
     def __init__(self, bs):
         self.bs = bs = int(bs)
-        header ='%x\r\n' % bs
+        header = '%x\r\n' % bs
         self.hlen = hlen = len(header)
         self.ba = bytearray(hlen + bs + 2)
         self.mem = memoryview(self.ba)
         self.header = self.mem[0:hlen]
-        self.payload = self.mem[hlen:hlen+bs]
-        self.payload_plus = self.mem[hlen:hlen+bs+2]
+        self.payload = self.mem[hlen:hlen + bs]
+        self.payload_plus = self.mem[hlen:hlen + bs + 2]
         self.hoffset = None
         self.size = None
 
@@ -142,20 +150,20 @@ class Chunk(object):
 
     @property
     def body(self):
-        return self.mem[self.hlen : self.hlen + self.size]
+        return self.mem[self.hlen: self.hlen + self.size]
 
     def _wrap(self, size):
         # update header
         header = wire.encode('%x\r\n' % size)
         hlen = len(header)
         self.hoffset = self.hlen - hlen
-        self.header[self.hoffset : self.hoffset + hlen] = header
+        self.header[self.hoffset: self.hoffset + hlen] = header
 
         # add footer
-        self.payload_plus[size:size+2] = b'\r\n'
+        self.payload_plus[size:size + 2] = b'\r\n'
         if size == self.bs:
             return self.mem
-        return self.mem[self.hoffset : self.hoffset + self.size + hlen + 2]
+        return self.mem[self.hoffset: self.hoffset + self.size + hlen + 2]
 
 
 class Chunks(object):
@@ -197,17 +205,18 @@ class Chunks(object):
 
                 # then carve off full blocks directly from src
                 while soff + bs <= slen:
-                    chunk.payload[0:bs] = src[soff:soff+bs]
+                    chunk.payload[0:bs] = src[soff:soff + bs]
                     yield chunk
                     chunk = next(chunks)
                     soff += bs
 
                 # and stash the remainder
                 pos = slen - soff
-                chunk.payload[0:pos] = src[soff:soff+pos]
+                chunk.payload[0:pos] = src[soff:soff + pos]
 
         if pos:
             yield chunk(pos)
+
 
 # because every multiprocessing.Process().start() very helpfully
 # does a waitpid(WNOHANG) across all known children, and I want
@@ -289,7 +298,7 @@ class Service(object):
 #            raise Graceful(True)
 
         signal.signal(signal.SIGTERM, _halt)
-        signal.signal(signal.SIGINT,  _halt)
+        signal.signal(signal.SIGINT, _halt)
 #        signal.signal(signal.SIGHUP,  _reload)
 
         procs = {}
@@ -313,7 +322,7 @@ class Service(object):
                 pid, status = os.wait()
                 if pid > 0:
                     proc, label, target = procs.pop(pid)
-                    if status is 0:
+                    if status == 0:
                         log.info("-%s(%d): exit: %d", label, pid, status)
                     else:
                         log.warning("-%s(%d): exit: %d", label, pid, status)
@@ -333,7 +342,7 @@ class Service(object):
                 except OSError:
                     break
                 proc, label, target = procs.pop(pid)
-                if status is 0:
+                if status == 0:
                     log.info("-%s(%d): exit: %d", label, pid, status)
                 else:
                     log.warning("-%s(%d): exit: %d", label, pid, status)
@@ -363,7 +372,7 @@ class Service(object):
                                 try:
                                     req = Request(conn, timeout=self.timeout)
                                     # hmm - it may not make sense to allow pipelining by default - look for magic header
-                                    if 'HTTP/1.1' == req.version and ('x-please-pipeline' not in req.headers or self.maxreqs is 0):
+                                    if 'HTTP/1.1' == req.version and ('x-please-pipeline' not in req.headers or self.maxreqs == 0):
                                         res.headers.set('Connection', 'close')
                                     self.process(req, res)
                                 except HTTPError as e:
@@ -377,11 +386,11 @@ class Service(object):
                                 raise Disconnected('not HTTP/1.1', level='debug')
                             elif res.headers.contains('Connection', 'close'):
                                 raise Disconnected('handler closed', level='debug')
-                    except Disconnected as e:
+                    except Disconnected:
                         pass
                     except socket.timeout:
                         log.warning('client %s:%d: timed out', *addr)
-                    except Exception as e:
+                    except Exception:
                         info = sys.exc_info()
                         log.error('Unhandled exception: %s', traceback.print_exception(*info))
                         sys.exit(1)
@@ -393,12 +402,12 @@ class Service(object):
                         conn.close()
                         log.debug('client %s:%d: finished', *addr)
         except Graceful:
-#            if e.reload:
-#                log.info("*master(%d): re-exec!", os.getpid())
-#                log.warn(repr(cmd))
-                #if __package__ is not None:
-                    #sys.argv[0] = '-m%s' % __loader__.name
-                #os.execl(sys.executable, sys.executable, *sys.argv)
+            # if e.reload:
+            #     log.info("*master(%d): re-exec!", os.getpid())
+            #     log.warn(repr(cmd))
+            #     if __package__ is not None:
+            #         sys.argv[0] = '-m%s' % __loader__.name
+            #     os.execl(sys.executable, sys.executable, *sys.argv)
             pass
 
     def process(self, req, res):
@@ -455,7 +464,7 @@ class Service(object):
         chunks = self.chunks.chunkify(body)
         for first in chunks:
             for chunk in chunks:
-                self.res.headers.set('Transfer-Encoding','chunked')
+                self.res.headers.set('Transfer-Encoding', 'chunked')
                 self.res.begin(default=200)
                 self.res.send(first.chunk)
                 self.res.send(chunk.chunk)
@@ -485,6 +494,7 @@ class Response(object):
         503: 'Service Unavailable',
         507: 'Insufficient Storage',
     }
+
     def __init__(self, sock):
         self._code = None
         self.sock = sock
@@ -551,9 +561,10 @@ class Response(object):
     def json(self, doc):
         return json_encode(doc)
 
+
 class Request(object):
     req = re.compile('^(' + '|'.join(HTTPMethods.all_methods) + ') (.+?)(?: (HTTP/[0-9.]+))?(\r?\n)$')
-    hsplit = re.compile(':\s*')
+    hsplit = re.compile(':\s*') # noqa
 
     def __init__(self, sock, timeout=10):
         self.sock = sock
@@ -570,7 +581,7 @@ class Request(object):
     # returns generator for posted content
     @lazy
     def body(self):
-        if self.method not in ('POST','PUT'):
+        if self.method not in ('POST', 'PUT'):
             return tuple()
 
         # RFC 2616 says that if Transfer-Encoding is set to anything other than 'identity', than
@@ -589,14 +600,14 @@ class Request(object):
         except KeyError:
             content_length = 0
 
-        if self.headers.contains('Expect','100-continue'):
+        if self.headers.contains('Expect', '100-continue'):
             self.sock.send('HTTP/1.1 100 Continue\r\n\r\n')
             log.debug('continued!')
 
         # fixme - I'm not super sure how Transfer-Encoding and Content-Encoding get used
         # in the wild - can you specify both chunked and gzip (or other) in TE? Does order matter?
         body = self._body_chunked() if chunked else self._body_raw(content_length)
-        if self.headers.contains('Content-Encoding','gzip'):
+        if self.headers.contains('Content-Encoding', 'gzip'):
             body = zcat(body)
         return body
 
@@ -809,6 +820,7 @@ class Step(HTTPMethods):
 def httpd(**kwargs):
     service = Service(**kwargs)
     service.run()
+
 
 if '__main__' == __name__:
     httpd()

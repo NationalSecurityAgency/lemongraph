@@ -1,7 +1,10 @@
-import msgpack
-from zlib import crc32
 from struct import pack
+from zlib import crc32
+
+import msgpack
+
 from six import iteritems
+
 
 class Indexer(object):
     def __init__(self):
@@ -32,11 +35,12 @@ class Indexer(object):
 
     def key(self, name, value, smash=True):
         hash(value)
-        return str(name), pack('=i',crc32(msgpack.packb(value)))
+        return str(name), pack('=i', crc32(msgpack.packb(value)))
 
     def prequery(self, index, value):
         key = self.key(index, value)
         method = self._idx[key[0]]
+
         def check(obj):
             return value in method(obj)
         return tuple(key) + (check,)

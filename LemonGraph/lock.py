@@ -1,5 +1,6 @@
-import os
 import fcntl
+import os
+
 
 class Lock(object):
     # byte-range file locking is tracked by process for an inode.
@@ -32,7 +33,6 @@ class Lock(object):
     def exclusive(self, *keys, **kwargs):
         kwargs['excl'] = True
         return self.lock(*keys, **kwargs)
-
 
     def _ctx_cleanup(self):
         self.ctx = None

@@ -11,7 +11,7 @@ if sys.version_info[0] > 2:
     # but return binary if unicode decode failed
     def decode(data):
         try:
-            u = data.decode()
+            data.decode()
         except UnicodeDecodeError:
             return data
         return data.decode()
@@ -26,7 +26,7 @@ if sys.version_info[0] > 2:
         raise TypeError('Unsupported type %s' % type(data))
 
 else:
-    uni_types = unicode
+    uni_types = unicode # noqa
     try:
         bin_types = (str, memoryview)
     except NameError:

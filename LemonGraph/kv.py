@@ -1,5 +1,6 @@
-from . import lib, ffi, wire, listify_py2
+from . import ffi, lib, listify_py2, wire
 from .serializer import Serializer
+
 
 class KV(object):
     def __init__(self, txn, domain, map_data=False, map_keys=False, serialize_domain=Serializer(), serialize_key=Serializer(), serialize_value=Serializer()):
@@ -7,8 +8,8 @@ class KV(object):
         self.txn = txn
         self._txn = txn._txn
         self.domain = domain
-        self.serialize_key    = serialize_key
-        self.serialize_value  = serialize_value
+        self.serialize_key = serialize_key
+        self.serialize_value = serialize_value
         enc = serialize_domain.encode(domain)
         flags = 0
         if map_keys:
@@ -88,10 +89,11 @@ class KV(object):
             return False
         return True
 
+
 class KVIterator(object):
     def __init__(self, kv, handler, pfx=None):
-        self.serialize_key    = kv.serialize_key
-        self.serialize_value  = kv.serialize_value
+        self.serialize_key = kv.serialize_key
+        self.serialize_value = kv.serialize_value
         self.handler = handler
         self._key = ffi.new('void **')
         self._data = ffi.new('void **')

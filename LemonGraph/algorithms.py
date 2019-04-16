@@ -1,5 +1,6 @@
 from collections import deque
 
+
 # source/target must be LemonGraph.Node objects from the same graph
 # if cost_cb is supplied:
 #   it must be a callable and will be passed the edge being traversed
@@ -12,9 +13,9 @@ def shortest_path(source, target, directed=False, cost_field=None, cost_default=
 
     if cost_cb is None:
         if cost_field is None:
-            cost_cb = lambda edge: cost_default
+            cost_cb = lambda edge: cost_default # noqa
         else:
-            cost_cb = lambda edge: edge.get(cost_field, cost_default)
+            cost_cb = lambda edge: edge.get(cost_field, cost_default) # noqa
 
     helper = _shortest_path_helper_directed if directed else _shortest_path_helper_undirected
 
@@ -44,6 +45,7 @@ def shortest_path(source, target, directed=False, cost_field=None, cost_default=
             seen.pop()
             seen.pop()
 
+
 def _shortest_path_helper_directed(node, seen, cost_cb, cost):
     for edge in node.iterlinks(filterIDs=seen, dir='out'):
         delta = cost_cb(edge)
@@ -51,6 +53,7 @@ def _shortest_path_helper_directed(node, seen, cost_cb, cost):
         if cost1 < cost:
             raise ValueError(delta)
         yield edge, edge.tgt, cost1
+
 
 def _shortest_path_helper_undirected(node, seen, cost_cb, cost):
     for edge in node.iterlinks(filterIDs=seen, dir='out'):

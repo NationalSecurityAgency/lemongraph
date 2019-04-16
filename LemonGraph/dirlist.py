@@ -1,5 +1,6 @@
 from . import ffi, lib, wire
 
+
 def dirlist(path):
     try:
         dirp = lib.opendir(wire.encode(path))
