@@ -1,4 +1,0 @@
-[submodule "deps/lmdb"]
-	path = deps/lmdb
-	url = https://github.com/LMDB/lmdb.git
-	branch = mdb.master

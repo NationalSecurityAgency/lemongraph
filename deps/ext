@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# dump stack trace on error
+function _oops(){
+	local frame=0
+	while caller $((frame++)) >&2
+	do :
+	done
+	exit 1
+}
+trap _oops ERR
+
+set -e -u -E -o pipefail
+
+function logcmd(){
+	echo "*** $_logpfx: $@" >&2
+	"$@"
+}
+
+unset CDPATH
+_action="$1"
+_pwd="$PWD"
+declare -r _oops _action _pwd logcmd
+
+# first load all .ext shell fragments
+for _ext in *.ext; do
+	[ -r "$_ext" ] || continue
+#	echo loading: "$_ext"
+	source ./"$_ext"
+	cd "$_pwd"
+done
+
+# now call all lg_* functions that were defined
+for _func in `compgen -A function "lg_${_action}_" || :`; do
+	_logpfx="${_func#lg_${_action}_}"
+#	echo calling: "$_func"
+	(
+		declare -r _logpfx
+		"$_func"
+	)
+done

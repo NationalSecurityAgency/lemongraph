@@ -2,8 +2,9 @@ PYTHON=python
 PYTHON_CFLAGS=-O3 -Wall
 CC+=-pipe
 CFLAGS=-fPIC -Wall -Wunused-variable -Wunused-but-set-variable -O3
-CPPFLAGS+=-Ideps/lmdb/libraries/liblmdb -Ilib
-VPATH=lib:deps/lmdb/libraries/liblmdb
+LMDB:=deps/lmdb/libraries/liblmdb
+CPPFLAGS+=-I$(LMDB) -Ilib
+VPATH=lib:$(LMDB)
 SNAPSHOT:=lg-$(shell date +%Y%m%d)
 
 default: build
@@ -12,20 +13,22 @@ liblemongraph.a:  mdb.o midl.o lemongraph.o db.o counter.o afsync.o avl.o
 liblemongraph.so: mdb.o midl.o lemongraph.o db.o counter.o afsync.o avl.o
 liblemongraph.so: LDFLAGS=-pthread
 liblemongraph.so: LDLIBS=-lz
+$(LMDB)/mdb.c:    deps
+$(LMDB)/midl.c:   deps
+db.o:             deps
 
 clean:
-	@find . -type d \( -name __pycache__ -o -name .eggs -o -name build -o -name dist -o -name \*.egg-info \) -exec find {} -mindepth 1 -delete -print \; -delete -print
+	@find . -type d \( -name __pycache__ -o -name .eggs -o -name build -o -name dist -o -name \*.egg-info \) -exec rm -rf {} \; -print -prune
 	@find . -type f \( -name \*.pyc -o -name MANIFEST -o -name \*.o -o -name \*.a -o -name \*.so \) -delete -print
 
 distclean: clean
-	@find deps -mindepth 2 -maxdepth 2 -exec rm -rv {} \;
+	@find ./deps -mindepth 1 -maxdepth 1 -type d -exec find {} -mindepth 1 -delete \; -delete -print
 
 deps:
-	@CFLAGS="$(PYTHON_CFLAGS)" $(PYTHON) setup.py check
+	@$(MAKE) -C deps --no-print-directory
 
 deps-update:
-	@git submodule init
-	@git submodule update --remote
+	@$(MAKE) -C deps --no-print-directory update
 
 build:
 	CFLAGS="$(PYTHON_CFLAGS)" $(PYTHON) setup.py build
@@ -39,7 +42,7 @@ install:
 uninstall:
 	CFLAGS="$(PYTHON_CFLAGS)" $(PYTHON) setup.py uninstall
 
-sdist:
+sdist: deps
 	CFLAGS="$(PYTHON_CFLAGS)" $(PYTHON) setup.py sdist
 
 snapshot:

@@ -11,6 +11,7 @@
 
 #include"lmdb.h"
 #include"db.h"
+#include"osal.h"
 
 #include"static_assert.h"
 
@@ -91,19 +92,6 @@ STATIC_ASSERT((int) DB_PREV_MULTIPLE  == (int) MDB_PREV_MULTIPLE,  "mismatched M
 #define TXNP(txn) (MDB_txn **)&txn->txn
 #define CURSOR(cursor) (MDB_cursor *)cursor->cursor
 #define CURSORP(cursor) (MDB_cursor **)&cursor->cursor
-
-// macOS
-#ifdef F_FULLFSYNC
-#warning fdatasync(fd) => fcntl(fd, F_FULLSYNC)
-#define FDATASYNC(fd) fcntl((fd), F_FULLFSYNC)
-
-#elif _POSIX_SYNCHRONIZED_IO > 0
-#define FDATASYNC(fd) fdatasync((fd))
-
-#else
-#warning fdatasync(fd) => fsync(fd)
-#define FDATASYNC(fd) fsync((fd))
-#endif
 
 char *db_strerror(int err){
 	return mdb_strerror(err);

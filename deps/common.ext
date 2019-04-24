@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# args: dir, commit
+function git_set_commit(){
+	(
+		cd "$1"
+		logcmd git reset --hard "$2"
+		logcmd git clean -f -d
+		logcmd touch "$2"
+	)
+}
+
+# args: dir, commit, repo
+function git_fetch_commit(){
+	[ -r "$1/$2" ] && return
+	(
+		if cd "$1" 2>/dev/null; then
+			if ! git show --quiet "$2" >/dev/null; then
+				logcmd git pull
+			fi
+		else
+			logcmd git clone "$3" "$1"
+			cd "$1"
+		fi
+	)
+	git_set_commit "$1" "$2"
+}
+
+# args: dir, var, src
+function git_update_commit(){
+	local c
+	c=`cd "$1" && logcmd git pull >&2 && git rev-parse HEAD`
+	[ -r "$1/$c" ] && return 0
+	git_set_commit "$1" "$c"
+	logcmd sed -i~ "s/^$2=.*\$/$2=$c/" "$3"
+	printf -v "$2" "$c"
+}

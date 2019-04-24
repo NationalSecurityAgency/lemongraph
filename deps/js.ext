@@ -1,0 +1,36 @@
+#!/bin/bash
+
+js_urls=(
+	https://nytimes.github.io/svg-crowbar/svg-crowbar.js
+	https://d3js.org/d3.v3.min.js
+	https://d3js.org/d3.v4.min.js
+)
+
+function do_curl(){
+	local url="$1"
+	local out="${1##*/}"
+	[ -r "$out" ] && return 0
+	logcmd curl -s -L "$1" > ".$out"
+	mv ".$out" "$out"
+}
+
+function lg_fetch_js(){
+	if ! cd js 2>/dev/null; then
+		mkdir js
+		cd js
+	fi
+	local x
+	for x in "${js_urls[@]}"; do
+		do_curl "$x"
+	done
+}
+
+function lg_fetch_js_links(){
+	local x js src dst
+	for x in "${js_urls[@]}"; do
+		js="${x##*/}"
+		src="js/$js"
+		dst="../LemonGraph/data/$js"
+		[[ "$src" -ef "$dst" ]] || logcmd ln -nf "$src" "$dst"
+	done
+}

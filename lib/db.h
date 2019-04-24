@@ -9,8 +9,6 @@
 #include<stdarg.h>
 #include<pthread.h>
 
-#include"lmdb.h"
-
 // status codes
 #define DB_SUCCESS 0
 #define DB_NOTFOUND (-30798)

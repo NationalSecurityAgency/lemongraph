@@ -15,21 +15,9 @@
 
 #include"avl.h"
 #include"afsync.h"
+#include"osal.h"
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
-
-// macOS
-#ifdef F_FULLFSYNC
-#warning fdatasync(fd) => fcntl(fd, F_FULLSYNC)
-#define FDATASYNC(fd) fcntl((fd), F_FULLFSYNC)
-
-#elif _POSIX_SYNCHRONIZED_IO > 0
-#define FDATASYNC(fd) fdatasync((fd))
-
-#else
-#warning fdatasync(fd) => fsync(fd)
-#define FDATASYNC(fd) fsync((fd))
-#endif
 
 static unsigned char idx_uuid[16] = {0};
 
