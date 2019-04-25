@@ -1,25 +1,23 @@
 FROM centos:7 AS base
 
 RUN yum install -y epel-release && yum clean all
-RUN yum install -y python36-cffi && yum clean all
-
+RUN yum install -y python36-cffi python36-setuptools python36-six && yum clean all
 
 FROM base AS build
 
 
 RUN yum install -y curl gcc git make python36-devel python36-pip python36-setuptools zlib-devel
-RUN pip3.6 install wheel
 
 COPY . /root
 WORKDIR /root
+
+RUN pip3.6 install wheel
 
 
 
 
 RUN python3.6 setup.py bdist_wheel
 RUN pip3 install dist/*.whl
-
-
 
 FROM base
 

@@ -1,25 +1,23 @@
 FROM alpine:3.9 AS base
 
-RUN apk update && apk add --no-cache py3-cffi
-
+RUN apk update && apk add --no-cache py3-cffi py3-setuptools py3-six
 
 
 FROM base AS build
 
 
 RUN apk add bash curl gcc git make musl-dev python3-dev py3-pip py3-setuptools zlib-dev
-RUN pip3 install wheel
 
 COPY . /root
 WORKDIR /root
+
+RUN pip3 install wheel
 
 RUN make deps
 RUN patch -N deps/lmdb/libraries/liblmdb/mdb.c < broken-musl-tls.patch
 
 RUN CPPFLAGS="-DBROKEN_MUSL_TLS -DHAVE_FDATASYNC=1" python3 setup.py bdist_wheel
 RUN pip3 install dist/*.whl
-
-
 
 FROM base
 
