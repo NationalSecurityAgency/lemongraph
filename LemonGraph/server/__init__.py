@@ -1299,7 +1299,7 @@ class LG__Adapter_Job_Task_post(_Params, _Input):
             with g.transaction(write=True) as txn:
                 try:
                     task = txn.lg_lite.task(adapter, query=query, uuid=task_uuid)
-                except KeyError:
+                except (KeyError, IndexError):
                     raise HTTPError(404, 'task not found: %s' % task_uuid)
                 self.do_input(txn, job_uuid, data=params)
                 if consume:
