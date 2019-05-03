@@ -404,7 +404,7 @@ class Flow(object):
         if filter is not None:
             query += ',' + filter
         count = 0
-        rec[0] = self.txn.nextID
+        rec = [self.txn.nextID]
         for chain in self.txn.query(query):
             rec[1::] = tuple(x.ID for x in chain)
             count += 1
