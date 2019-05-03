@@ -407,6 +407,7 @@ class Flow(object):
         rec = [self.txn.nextID]
         for chain in self.txn.query(query):
             rec[1::] = tuple(x.ID for x in chain)
+            self.queue.push(rec)
             count += 1
 
         if count:
