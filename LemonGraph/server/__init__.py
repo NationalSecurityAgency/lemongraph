@@ -307,15 +307,8 @@ class _Input(Handler):
             self.do_edges(txn, data['edges'], seed, create)
 
     def do_meta(self, txn, meta, seed=False, create=False):
-        a = txn.nextID
-
         for key, val in iteritems(meta):
             txn.set(key, val, merge=True)
-
-        b = txn.nextID
-        if b > a:
-            # fixme - when updating graph meta, advance any adaptor bookmarks currently at end
-            pass
 
     def do_chains(self, txn, chains, seed, create=False):
         # cleanse & merge
