@@ -8,6 +8,7 @@ from .. import syncd
 import signal
 import sys
 import logging
+import os.path
 from getopt import GetoptError, gnu_getopt as getopt
 
 class LogHandler(logging.StreamHandler):
@@ -111,7 +112,7 @@ def main():
     timeout = 3
     buflen = 1048576
     try:
-        path = args[0]
+        path = os.path.abspath(args[0])
     except IndexError:
         pass
 
