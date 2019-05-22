@@ -30,10 +30,13 @@ class BaseIndexer(object):
         return name, value
 
 class Indexer(BaseIndexer):
+    # python 2.7: crc32 returns a signed 32-bit int
+    # python 3.4: crc32 returns an unsigned 32-bit int
+    fmt = '=i' if crc32(b'foo') < 0 else '=I'
 
     def key(self, name, value):
         hash(value)
-        return str(name), pack('=i',crc32(msgpack.packb(value, use_bin_type=False)))
+        return str(name), pack(self.fmt, crc32(msgpack.packb(value, use_bin_type=False)))
 
     def prequery(self, index, value):
         key = self.key(index, value)
