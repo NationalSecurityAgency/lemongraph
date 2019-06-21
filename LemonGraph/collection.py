@@ -14,6 +14,7 @@ import uuid
 from lazy import lazy
 
 from . import Graph, Serializer, Hooks, dirlist, Indexer, BaseIndexer, Query
+from .uuidgen import uuidgen
 
 try:
     xrange          # Python 2
@@ -25,14 +26,22 @@ log.addHandler(logging.NullHandler())
 
 idx_uuid = '00000000-0000-0000-0000-000000000000'
 
-def uuidgen():
-    return str(uuid.uuid1())
-
 def uuid_to_utc_ts(u):
-    return (uuid.UUID('{%s}' % u).time - 0x01b21dd213814000) // 1e7
+    return (uuid.UUID('{%s}' % u).time - 0x01b21dd213814000) / 1e7
 
 def uuid_to_utc(u):
     return datetime.datetime.utcfromtimestamp(uuid_to_utc_ts(u)).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+
+def intersects(list1, list2):
+    if len(list2) > len(list1):
+        a = frozenset(list2)
+        b = list1
+    else:
+        a = frozenset(list1)
+        b = list2
+    for x in b:
+        if x in a:
+            return True
 
 class CollectionHooks(Hooks):
     def __init__(self, uuid, collection):
@@ -247,7 +256,11 @@ class Context(object):
         kwargs['ctx'] = self
         return self._graph(*args, **kwargs)
 
-    def _status_enrich(self, status, uuid):
+    def _status_enrich(self, status, uuid, user=None, roles=None):
+        if user is not None:
+            user_roles = status['roles'][user]
+            if roles is not None and not intersects(user_roles, roles):
+                raise KeyError
         output = { 'graph': uuid, 'id': uuid }
         try:
             output['meta'] = self.metaDB[uuid]
@@ -259,9 +272,9 @@ class Context(object):
         output['created'] = uuid_to_utc(uuid)
         return output
 
-    def status(self, uuid):
+    def status(self, uuid, **kwargs):
         try:
-            return self._status_enrich(self.statusDB[uuid], uuid)
+            return self._status_enrich(self.statusDB[uuid], uuid, **kwargs)
         except KeyError:
             pass
 
@@ -492,9 +505,9 @@ class Collection(object):
     def _words(self):
         return re.compile('\w+')
 
-    def status(self, uuid):
+    def status(self, uuid, **kwargs):
         with self.context(write=False) as ctx:
-            return ctx.status(uuid)
+            return ctx.status(uuid, **kwargs)
 
     def graphs(self, enabled=None):
         with self.context(write=False) as ctx:

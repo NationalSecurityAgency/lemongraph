@@ -16,12 +16,12 @@ import sys
 import tempfile
 import time
 import traceback
-from uuid import uuid1 as uuidgen
 
 from .. import Serializer, Node, Edge, QuerySyntaxError, merge_values
 from ..collection import Collection, uuid_to_utc
 from ..lock import Lock
 from ..httpd import HTTPMethods, HTTPError, httpd, json_encode, json_decode
+from ..uuidgen import uuidgen
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
@@ -35,7 +35,8 @@ ADAPTER = re.compile(r'^[A-Z][A-Z0-9_]*$')
 
 def date_to_timestamp(s):
     dt = dateutil.parser.parse(s)
-    return time.mktime(dt.utctimetuple()) + dt.microsecond // 1e6
+    # time.mktime expects local time
+    return time.mktime(dt.astimezone().timetuple()) + dt.microsecond / 1e6
 
 def js_dumps(obj, pretty=False):
     txt = json_encode(obj)
@@ -145,6 +146,16 @@ class Handler(HTTPMethods):
     def param(self, field, default=None):
         return self.params.get(field,[default])[-1]
 
+    # examine last instance of param
+    # if not present, return None
+    # if '0', 'false', or 'no', return False
+    # else return True
+    def flag(self, field):
+        try:
+            return self.params[field][-1].lower() not in ('0', 'false', 'no')
+        except KeyError:
+            pass
+
     def input(self):
         try:
             encoded = b''.join(self.body)
@@ -193,7 +204,7 @@ class Handler(HTTPMethods):
     @property
     def graphs_filter(self):
         filter = self.creds
-        filter['enabled'] = True if 'enabled' in self.params else None
+        filter['enabled'] = self.flag('enabled')
         filter['filters'] = self.params.get('filter', None)
         for created in ('created_after', 'created_before'):
             s = self.param(created, None)
@@ -229,6 +240,7 @@ class Handler(HTTPMethods):
     msgpack = Serializer.msgpack()
     def kv(self, txn):
         return txn.kv('lg.restobjs', serialize_value=self.msgpack)
+
 
 def graphtxn(write=False, create=False, excl=False, on_success=None, on_failure=None):
     def decorator(func):
@@ -479,7 +491,7 @@ class Graph_Root(_Input, _Streamy):
                 pass
 
     def post(self, _):
-        uuid = str(uuidgen())
+        uuid = uuidgen()
         return self._create(None, uuid)
 
 class Graph_UUID(_Input, _Streamy):
@@ -563,7 +575,7 @@ class Graph_UUID(_Input, _Streamy):
 
     @property
     def snap(self):
-        return self.param('snap') not in ('0', 'no', 'false')
+        return self.flag('snap')
 
     @property
     def limit(self):
@@ -593,7 +605,7 @@ class Graph_UUID(_Input, _Streamy):
 
         uniq = sorted(set(queries))
 
-        if self.param('crawl', '0') != '0':
+        if self.flag('crawl'):
             if self.streamer is not streamJS:
                 raise HTTPError(406, 'Format for graph dump has not been determined for non-json output')
             try:
@@ -646,7 +658,7 @@ class Graph_UUID(_Input, _Streamy):
         self.do_input(txn, uuid)
 
     def post(self, _, uuid):
-        if 'create' in self.params:
+        if self.flag('create'):
             # attempt create
             try:
                 for x in self._create(None, uuid):
@@ -660,7 +672,14 @@ class Graph_UUID(_Input, _Streamy):
         for x in self._update(None, uuid):
             yield x
 
-class Graph_UUID_Status(Handler):
+class _Status(Handler):
+    def status(self, uuid):
+        status = self.collection.status(uuid, **self.creds)
+        if status is None:
+            raise HTTPError(404, '%s status is not cached or user/role mismatch' % uuid)
+        return status
+
+class Graph_UUID_Status(_Status):
     path = ('graph', UUID, 'status')
 
     def get(self, _, uuid, __):
@@ -669,12 +688,6 @@ class Graph_UUID_Status(Handler):
     def head(self, _, uuid, __):
         self.status(uuid)
         self.res.code = 200
-
-    def status(self, uuid):
-        status = self.collection.status(uuid)
-        if status is None:
-            raise HTTPError(404, '%s status is not cached' % uuid)
-        return status
 
 class Reset_UUID(_Input, Handler):
     path = ('reset', UUID,)
@@ -699,7 +712,7 @@ class Reset_UUID(_Input, Handler):
                         if keep is None:
                             keep = self.default_keep
 
-                        if keep.get('kv',False):
+                        if keep.get('kv', False):
                             self.clone_kv(t1, t2)
 
                         seeds = keep.get('seeds', None)
@@ -1011,8 +1024,7 @@ class Static(Handler):
         try:
             body = self.cache[resource]
         except KeyError:
-            body = pkg_resources.resource_string(__name__, '../data/%s' % resource)
-            #self.cache[resource] = body
+            body = self.cache[resource] = pkg_resources.resource_string(__name__, '../data/%s' % resource)
 
         extension = os.path.splitext(resource)[1]
         try:
@@ -1022,10 +1034,12 @@ class Static(Handler):
         self.res.headers.set('Content-Length', len(body))
         return body
 
-class View_UUID(Static):
+class View_UUID(Static, _Status):
     path = ('view', UUID)
 
     def get(self, _, uuid):
+        # check creds against index
+        self.status(uuid)
         return super(View_UUID, self).get(Static.path[0], self.param('style', 'd3v4') + '.html')
 
 class Favicon(Static):

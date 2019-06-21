@@ -4,6 +4,7 @@ from ..collection import Collection
 from ..httpd import Graceful
 from . import Server
 from .. import syncd
+from ..uuidgen import setnode
 
 import signal
 import sys
@@ -30,6 +31,7 @@ def usage(msg=None, fh=sys.stderr):
     print('  -l <log-level>      (info)', file=fh)
     print('  -t <timeout>        (3 seconds)', file=fh)
     print('  -b <buflen>         (1048576)', file=fh)
+    print('  -u macaddr          MAC address to use in v1 uuids', file=fh)
     print('  -s                  enable nosync for graph dbs', file=fh)
     print('  -m                  enable nometasync for graph dbs', file=fh)
     print('  -n                  enable notls', file=fh)
@@ -91,7 +93,7 @@ def update_depth_cost():
 def main():
     levels = ('NOTSET', 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')
     try:
-        opts, args = getopt(sys.argv[1:], 'i:p:d:l:w:t:b:smnrh')
+        opts, args = getopt(sys.argv[1:], 'i:p:d:l:w:t:b:u:smnrh')
     except GetoptError as err:
         usage(msg=str(err))
     if len(args) > 1:
@@ -140,6 +142,8 @@ def main():
                 workers = int(a)
             elif o == '-b':
                 buflen = int(a)
+            elif o == '-u':
+                setnode(a)
             elif o == '-h':
                 usage(fh=sys.stdout)
             else:

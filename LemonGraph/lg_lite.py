@@ -3,11 +3,11 @@ from __future__ import print_function
 from lazy import lazy
 from six import iteritems, string_types
 from time import time
-from uuid import uuid1 as uuidgen
 
 from . import wire, lib, ffi
 from .MatchLGQL import MatchLGQL
 from .serializer import Serializer
+from .uuidgen import uuidgen
 
 msgpack = Serializer.msgpack()
 vuints = Serializer.vuints(decode_type=list)
@@ -428,7 +428,7 @@ class Task(object):
             raise RuntimeError
 
         if uuid is None:
-            self.uuid = uuid = str(uuidgen())
+            self.uuid = uuid = uuidgen()
             self.touch()
             flow.taskdb[uuid] = records
             with self.flow as flow:
