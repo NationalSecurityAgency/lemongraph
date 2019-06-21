@@ -183,6 +183,8 @@ By default, it will run:
 * one sync process responsible for syncing graphs to disk
 * _N_ (`-w`) worker processes to handle http requests
 
+See [RESTAPI.md](RESTAPI.md) documentation.
+
 # Query Language
 
 This query language is designed to query for arbitrarily long node-edge-node chains in the graph, and supports two querying styles:
