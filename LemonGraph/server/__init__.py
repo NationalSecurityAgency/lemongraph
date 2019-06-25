@@ -142,14 +142,14 @@ class Handler(HTTPMethods):
         return self.params.get(field,[default])[-1]
 
     # examine last instance of param
-    # if not present, return None
+    # if not present, return None (default)
     # if '0', 'false', or 'no', return False
     # else return True
-    def flag(self, field):
+    def flag(self, field, default=None):
         try:
             return self.params[field][-1].lower() not in ('0', 'false', 'no')
         except KeyError:
-            pass
+            return default
 
     def input(self):
         try:
@@ -571,7 +571,7 @@ class Graph_UUID(_Input, _Streamy):
 
     @property
     def snap(self):
-        return self.flag('snap')
+        return self.flag('snap', True)
 
     @property
     def limit(self):
