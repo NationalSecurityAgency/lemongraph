@@ -26,7 +26,6 @@ def usage(msg=None, fh=sys.stderr):
     print('Options:', file=fh)
     print('  -i <bind-ip>        (127.0.0.1)', file=fh)
     print('  -p <bind-port>      (8000)', file=fh)
-    print('  -d <poll-delay-ms>  (250)', file=fh)
     print('  -w <workers>        (#cpu cores)', file=fh)
     print('  -l <log-level>      (info)', file=fh)
     print('  -t <timeout>        (3 seconds)', file=fh)
@@ -104,7 +103,6 @@ def main():
     ip = '127.0.0.1'
     port = 8000
     logspec = default_level
-    poll = 250
     nosync = False
     nometasync = False
     notls = False
@@ -118,6 +116,7 @@ def main():
     except IndexError:
         pass
 
+    warnings = set()
     try:
         for o, a in opts:
             if o == '-i':
@@ -125,7 +124,7 @@ def main():
             elif o == '-p':
                 port = sorted((0, int(a), 65536))[1]
             elif o == '-d':
-                poll = sorted((20, int(a), 10000))[1]
+                warnings.add('-d option is deprecated and has no effect!')
             elif o == '-s':
                 nosync = True
             elif o == '-m':
@@ -172,6 +171,10 @@ def main():
         logger = logging.getLogger(target)
         logger.addHandler(loghandler)
         logger.setLevel(getattr(logging, level.upper()))
+
+    log = logging.getLogger('LemonGraph.server')
+    for msg in warnings:
+        log.warning(msg)
 
     graph_opts = dict(
         serialize_property_value=Serializer.msgpack(),
