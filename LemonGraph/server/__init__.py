@@ -88,7 +88,6 @@ class Handler(HTTPMethods):
     }
     multi = ()
     single = ()
-    single_parameters = {}
 
     def __init__(self, collection_path=None, collection_syncd=None, graph_opts=None, notls=False):
         self.collection_path = collection_path
@@ -138,10 +137,6 @@ class Handler(HTTPMethods):
     def body(self):
         return self.req.body
 
-    @property
-    def params(self):
-        return parse_qs(self.req.query, keep_blank_values=1)
-
     # grab latest param only
     def param(self, field, default=None):
         return self.params.get(field,[default])[-1]
@@ -179,6 +174,7 @@ class Handler(HTTPMethods):
     def init(self, req, res):
         self.req = req
         self.res = res
+        self.params = parse_qs(req.query, keep_blank_values=1)
         if req.headers.contains('Accept', 'application/x-msgpack', icase=True):
             self.streamer = Streamers['application/x-msgpack']
         else:
