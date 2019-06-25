@@ -174,14 +174,20 @@ Snapshot a (potentially active) database:
 Run the REST service (use `-h` to list options):
 * `python -mLemonGraph.server <options>`
 
-The rest service maintains an indexed cache of basic graph information. Every _N_ milliseconds (`-d` option), it will check for and flush updated graphs to disk.
+It runs:
+* one master process responsible for [re]spawning and killing child processes
+* one sync process responsible for sync-ing graphs to disk
+	* wakes once a second, sync-ing updated graphs that either:
+		* haven't been synced within the last 15 seconds, or
+		* haven't been updated within the last 5 seconds
+	* multi-threaded - currently set to use 32 threads
+* _N_ worker processes to handle http requests - see `-w` (default: number of detected cores)
 
 For greater throughput, use `-s` at the expense of possible data loss in the event of OS/hardware/power-related failure.
 
-By default, it will run:
-* one master process responsible for [re]spawning and killing child threads
-* one sync process responsible for syncing graphs to disk
-* _N_ (`-w`) worker processes to handle http requests
+Optionally feed it a path (default: 'graphs') to a directory to use to store individual graphs. It will be created if necessary.
+
+The rest service maintains an adjacent indexed cache of basic graph information (default 'graphs.idx'). Should it become corrupted, halt the rest service, remove the index, and it will be rebuilt on startup.
 
 See [RESTAPI.md](RESTAPI.md) documentation.
 
