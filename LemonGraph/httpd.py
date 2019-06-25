@@ -244,6 +244,10 @@ class Process(object):
                 sys.stdout.flush()
                 sys.stderr.flush()
                 os._exit(code)
+        try:
+            func.spawned(self.pid)
+        except AttributeError:
+            pass
 
     def default_terminate(self, sig=signal.SIGTERM):
         os.kill(self.pid, sig)
@@ -316,7 +320,7 @@ class Service(object):
             try:
                 target, terminate = target
             except:
-                terminate = None
+                terminate = getattr(target, 'terminate', None)
             proc = Process(target, terminate=terminate, close_fds=[self.pw])
             procs[proc.pid] = (proc, label, (target, terminate))
             log_proc.info("+%s(%d): spawned", label, proc.pid)

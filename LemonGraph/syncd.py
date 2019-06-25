@@ -8,6 +8,18 @@ from . import lib, wire
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
 
+# updated via hooks in LemonGraph.server.__main__
+pid = 0
+
+# master proc actually emits logs
+# add filter to overwrite pid with child syncd process pid
+class SyncdFilter(logging.Filter):
+    def filter(self, record):
+        record.process = pid
+        return True
+
+log.addFilter(SyncdFilter())
+
 class Syncd(object):
     def __init__(self, dir, threads=32):
         # supplied path must not end with dot or slash

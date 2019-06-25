@@ -185,11 +185,18 @@ def main():
     col.close()
 
     sd = syncd.Syncd(path)
+
     def receiver():
         signal.signal(signal.SIGHUP, signal.SIG_IGN)
         signal.signal(signal.SIGINT, signal.SIG_IGN)
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         return sd.receiver()
+
+    def receiver_spawned(pid):
+        syncd.pid = pid
+
+    setattr(receiver, 'spawned', receiver_spawned)
+    setattr(receiver, 'terminate', sd.shutdown)
 
     # fire up syncd monitor thread
     sd.monitor()
@@ -199,7 +206,7 @@ def main():
         collection_syncd=sd,
         graph_opts=graph_opts,
         notls=notls,
-        extra_procs={'syncd': (receiver, sd.shutdown)},
+        extra_procs={'syncd': receiver },
         host=ip,
         port=port,
         spawn=workers,
