@@ -1,4 +1,4 @@
-FROM ubuntu:bionic AS base
+FROM ubuntu:disco AS base
 
 RUN apt-get update && apt-get install -y -q python3-cffi python3-setuptools python3-six && apt-get clean
 
@@ -20,7 +20,7 @@ RUN pip3 install dist/*.whl
 
 FROM base
 
-COPY --from=build /usr/local/lib/python3.6/dist-packages /usr/local/lib/python3.6/dist-packages
+COPY --from=build /usr/local/lib/python3.7/dist-packages /usr/local/lib/python3.7/dist-packages
 
 
 EXPOSE 8000
