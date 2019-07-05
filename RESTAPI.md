@@ -83,10 +83,10 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 * __enabled__ (*boolean*):
 	* default: __true__
 	* can be used to [filter bulk endpoints](#bulk-endpoint-query-parameters)
-	* used by [LG-Lite](#jobs)
+	* used by [LG-Lite](LG_LITE.md#jobs)
 * __priority__ (*uint*):
 	* clamped to be in numeric range [0-255], default: 100
-	* used by [LG-Lite](#jobs)
+	* used by [LG-Lite](LG_LITE.md#jobs)
 * __roles__ (*dict*):
 	* non-dicts are ignored
 	* keys are users
