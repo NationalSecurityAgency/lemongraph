@@ -18,6 +18,7 @@
 #include"osal.h"
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define UNCHECKED_RV(x) if((x))
 
 static unsigned char idx_uuid[16] = {0};
 
@@ -138,8 +139,7 @@ static inline void _afs_tick_thread(shared_t s){
 		pthread_mutex_unlock(s->mutex);
 		if(active || active2){
 			len = sprintf(msg, fmt, active2, syncs, dupes, age, elapsed);
-			// suppress ignored return value
-			(void) write(s->mfd, msg, len);
+			UNCHECKED_RV(write(s->mfd, msg, len));
 			len = 0;
 		}
 		active = active2;
@@ -151,8 +151,7 @@ static inline void _afs_tick_thread(shared_t s){
 	}while(s->cursor);
 	if(active2){
 		len = sprintf(msg, fmt, s->active, s->syncs, s->dupes, 0, now - s->start);
-		// suppress ignored return value
-		(void) write(s->mfd, msg, len);
+		UNCHECKED_RV(write(s->mfd, msg, len));
 	}
 	s->threads--;
 	pthread_cond_signal(s->cond_tick);
