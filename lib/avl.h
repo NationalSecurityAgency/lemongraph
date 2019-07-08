@@ -4,7 +4,7 @@
 #include<sys/types.h>
 
 /*
- * The goals of this AVL tree implimentation are:
+ * The goals of this AVL tree implementation are:
  *  * constant time reset
  *  * efficient upserts
  *

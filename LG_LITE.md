@@ -1,6 +1,6 @@
 # LG Lite
 
-This aims to re-impliment the core functionality of LemonGrenade with fewer moving parts.
+This aims to re-implement the core functionality of LemonGrenade with fewer moving parts.
 
 # Quickstart
 
