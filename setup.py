@@ -33,9 +33,9 @@ def wrap(**classes):
 
 cffi = ['cffi>=1.8.2,<1.13']
 reqs = cffi + [
-    'lazy>=1.0,<1.4',
+    'lazy>=1.0,<1.5',
     'msgpack>=0.6,<0.7',
-    'python-dateutil>=1.4,<2.7',
+    'python-dateutil>=1.4,<2.9',
     'setuptools',
     'six',
 ]
