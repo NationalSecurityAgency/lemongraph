@@ -3,6 +3,6 @@ graft deps
 include test.py
 include LICENSE
 include Makefile
-include README.md
-include RESTAPI
+include *.md
+include Dockerfile.*
 include requirements.txt
