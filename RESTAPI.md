@@ -198,7 +198,7 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 		* either:
 			* __type__ (*string*)
 		* or:
-		  * __ID__ (*uint*)
+			* __ID__ (*uint*)
 	* edge objects referenced in __edges__ must include:
 		* either:
 			* __type__ (*string*)
@@ -398,11 +398,11 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 
 #### /lg/config/{*job_uuid*}/{*adapter*}
 * __GET__ - Return _job\_uuid_'s config/status per query for _adapter_
-        * Request headers:
-                * Accept: `application/json`, `application/x-msgpack`
+	* Request headers:
+		* Accept: `application/json`, `application/x-msgpack`
 * __POST__ - Update _adapter_'s config
-        * Request headers:
-                * Content-Type: `application/json`, `application/x-msgpack`
+	* Request headers:
+		* Content-Type: `application/json`, `application/x-msgpack`
 	* payload - two styles:
 		* set/update primary query config:
 			* __query__: if present, sets as primary flow, any missing fields are inherited from previous primary, and previous primary's autotasking is disabled
@@ -428,9 +428,9 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 
 #### /lg/adapter/{*adapter*}
 * __GET__/__POST__ - Return next task for _adapter_ based on job priority, query parameters, and posted body
-        * Request headers:
-                * Accept: `application/json`, `application/x-msgpack`
-                * Content-Type: `application/json`, `application/x-msgpack`
+	* Request headers:
+		* Accept: `application/json`, `application/x-msgpack`
+		* Content-Type: `application/json`, `application/x-msgpack`
 	* parameters/payload - all fields are optional:
 		* __query__ - limit tasks to be for a specific _query_ or queries (else round-robins through available)
 		* __limit__ - limit task size to _limit_ records (default: __200__, does not apply to re-issued tasks)
@@ -449,9 +449,9 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 
 #### /lg/adapter/{*adapter*}/{*job_uuid*}
 * __POST__ - Manually exercise _adapter_ against _job\_uuid_, optionally using a query filter
-        * Request headers:
-                * Accept: `application/json`, `application/x-msgpack`
-                * Content-Type: `application/json`, `application/x-msgpack`
+	* Request headers:
+		* Accept: `application/json`, `application/x-msgpack`
+		* Content-Type: `application/json`, `application/x-msgpack`
 	* returns number of chains injected into task queue
 	* parameters/payload:
 		* __query__ - optionally supply a specific _query_ (defaults to _adapter_'s primary query)
@@ -465,15 +465,15 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 
 #### /lg/adapter/{*adapter*}/{*job_uuid*}/{*task_uuid*}
 * __GET__ - Update task timestamp, return specific task
-        * Request headers:
-                * Accept: `application/json`, `application/x-msgpack`
-        * Query parameters:
-                * __meta__ - list of keys to harvest from graph meta and bundle with task data
+	* Request headers:
+		* Accept: `application/json`, `application/x-msgpack`
+	* Query parameters:
+		* __meta__ - list of keys to harvest from graph meta and bundle with task data
 * __HEAD__ - Update task timestamp
 * __DELETE__ - Delete task
 * __POST__ - Merge task results, then delete task (default) or update task timestamp
-        * Request headers:
-                * Content-Type: `application/json`, `application/x-msgpack`
+	* Request headers:
+		* Content-Type: `application/json`, `application/x-msgpack`
 	* payload:
 		* __consume__: if true, delete task successful ingest, else just update task timestamp (default: __true__)
 		* __nodes__: list of node objects
