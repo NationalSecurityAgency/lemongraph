@@ -436,12 +436,14 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 		* __limit__ - limit task size to _limit_ records (default: __200__, does not apply to re-issued tasks)
 		* __min\_age__ - skip tasks if touched less than _min\_age_ seconds ago (default: __60__)
 		* __blacklist__ - skip provided list of tasks
+		* __meta__ - list of keys to harvest from graph meta and bundle with task data
 			```javascript
 			{
 				"query": string,
 				"limit": uint,
 				"min_age": uint,
-				"blacklist": list
+				"blacklist": list,
+				"meta": list
 			}
 			```
 
@@ -465,6 +467,8 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 * __GET__ - Update task timestamp, return specific task
         * Request headers:
                 * Accept: `application/json`, `application/x-msgpack`
+        * Query parameters:
+                * __meta__ - list of keys to harvest from graph meta and bundle with task data
 * __HEAD__ - Update task timestamp
 * __DELETE__ - Delete task
 * __POST__ - Merge task results, then delete task (default) or update task timestamp

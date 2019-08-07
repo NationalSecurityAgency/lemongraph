@@ -1158,7 +1158,7 @@ class LG_Config_Job_Adapter(LG_Config_Job):
                 txn.lg_lite.update_adapter(adapter, config)
 
 class _LG_Tasky(Handler, _Streamy):
-    def stream_job_task(self, job_uuid, adapter, priority=None, **kwargs):
+    def stream_job_task(self, job_uuid, adapter, priority=None, meta=None, **kwargs):
         with self.graph(job_uuid, create=False) as g:
             with g.transaction(write=True) as txn:
                 try:
@@ -1176,6 +1176,13 @@ class _LG_Tasky(Handler, _Streamy):
                     'uuid': job_uuid,
                     'location': location,
                 }
+                if meta:
+                    info['meta'] = m = {}
+                    for k in meta:
+                        try:
+                            m[k] = txn[k]
+                        except KeyError:
+                            pass
                 if priority is not None:
                     self.res.headers.set('X-lg-priority', str(priority))
                 for chunk in self.stream([info], task.format()):
@@ -1236,7 +1243,7 @@ class LG__Adapter(_Params, _LG_Tasky):
         data = self.input() or {}
         params = self.merge_params(input=data,
             single={'limit': int, 'min_age': int },
-            multi=('query', 'blacklist'))
+            multi=('query', 'blacklist', 'meta'))
 
         queries = set(params.pop('query', [])) or self.queries(adapter)
 
@@ -1310,13 +1317,14 @@ class LG__Adapter_Job_Task_post(_Params, _Input):
                 else:
                     task.touch()
 
-class LG__Adapter_Job_Task_get(_LG_Tasky):
+class LG__Adapter_Job_Task_get(_Params, _LG_Tasky):
     path = ('lg', 'adapter', ADAPTER, UUID, UUID)
     offset = 2
 
     def get(self, adapter, job_uuid, task_uuid):
+        params = self.merge_params(multi=('meta',))
         try:
-            return self.stream_job_task(job_uuid, adapter, uuid=task_uuid)
+            return self.stream_job_task(job_uuid, adapter, uuid=task_uuid, **params)
         except KeyError:
             raise HTTPError(404, 'task not found: %s' % task_uuid)
 
