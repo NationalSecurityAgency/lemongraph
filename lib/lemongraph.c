@@ -23,8 +23,6 @@
 #include"static_assert.h"
 #include"counter.h"
 
-typedef uint64_t txnID_t;
-
 STATIC_ASSERT(sizeof(uint64_t) == sizeof(txnID_t), "");
 STATIC_ASSERT(sizeof(uint64_t) == sizeof(logID_t), "");
 STATIC_ASSERT(sizeof(uint64_t) == sizeof(strID_t), "");
@@ -205,33 +203,6 @@ static dbi_t DB_INFO[] = {
 	[DB_TXNLOG] = { "txnlog", 0, magic_txnlog_cmp }
 };
 
-struct graph_t{
-	struct db_t db;
-};
-
-#define TXN_DB(txn) ((txn_t)(txn))->db
-#define TXN_RW(txn) ((txn)->txn.rw)
-#define TXN_RO(txn) ((txn)->txn.ro)
-#define TXN_PARENT(txn) ((graph_txn_t)(((txn_t)(txn))->parent))
-
-struct graph_txn_t{
-	// everything after 'txn' is copied to a parent txn on commit success
-	struct txn_t txn;
-
-	strID_t next_strID;
-	logID_t next_logID;
-	logID_t begin_nextID;
-	int64_t node_delta;
-	int64_t edge_delta;
-
-	// everything from prev_id down may be copied to a parent txn on commit fail/abort
-	// (iff the parent didn't already have it)
-	txnID_t prev_id;
-	logID_t prev_start;
-	logID_t prev_count;
-	uint64_t prev_nodes;
-	uint64_t prev_edges;
-};
 
 typedef struct txn_info_t * txn_info_t;
 struct txn_info_t{
@@ -676,7 +647,7 @@ static INLINE logID_t __prop_resolve(graph_txn_t txn, prop_t e, logID_t beforeID
 	return e->id;
 }
 
-static INLINE logID_t __node_resolve(graph_txn_t txn, node_t e, logID_t beforeID, int readonly){
+static INLINE logID_t __node_resolve(graph_txn_t txn, node_t e, logID_t beforeID, int readonly) {
 	if(_node_lookup(txn, e, beforeID) || readonly)
 		return e->id;
 
@@ -894,6 +865,53 @@ prop_t graph_set(graph_txn_t txn, void *key, size_t klen, void *val, size_t vlen
 
 void graph_unset(graph_txn_t txn, void *key, size_t klen){
 	_entry_unset(txn, 0, key, klen);
+}
+
+static INLINE logID_t _node_resolve_id(graph_txn_t txn, node_t e, logID_t beforeID, int readonly){	
+	// e->rectype = GRAPH_NODE;
+	return __node_resolve(txn, e, beforeID, readonly);	
+}
+static INLINE logID_t _edge_resolve_id(graph_txn_t txn, edge_t e, logID_t beforeID, int readonly){	
+	e->rectype = GRAPH_EDGE;
+	assert(e->src && e->tgt);	
+	return __edge_resolve(txn, e, beforeID, readonly);	
+}
+static INLINE logID_t _prop_resolve_id(graph_txn_t txn, logID_t parent_id, prop_t e, logID_t beforeID, int readonly){	
+	e->rectype = GRAPH_PROP;
+	e->pid = parent_id;
+	return __prop_resolve(txn, e, beforeID, readonly);		
+}
+
+
+// logID_t graph_node_id_resolve(graph_txn_t txn, node_t e){
+logID_t graph_nodeID_resolve(graph_txn_t txn, strID_t type, strID_t val){
+	struct node_t e = {
+		.rectype = GRAPH_NODE,
+		.type = type,
+		.val = val
+	};
+	return _node_resolve_id(txn, &e, 0, 0);
+}
+// logID_t graph_edge_id_resolve(graph_txn_t txn, edge_t e){
+logID_t graph_edgeID_resolve(graph_txn_t txn, logID_t src, logID_t tgt, strID_t type, strID_t val){
+	struct edge_t e = {
+		.rectype = GRAPH_EDGE,
+		.src = src,
+		.tgt = tgt,
+		.type = type,
+		.val = val
+	};
+	return _edge_resolve_id(txn, &e, 0, 0);
+}
+// logID_t graph_ID_set(graph_txn_t txn, logID_t parent_id, prop_t e){
+logID_t graph_ID_set(graph_txn_t txn, logID_t parent_id, strID_t key, strID_t val){
+	struct prop_t e = {
+		.rectype = GRAPH_PROP,
+		.pid = parent_id,		
+		.key = key,
+		.val = val
+	};
+	return _prop_resolve_id(txn, parent_id, &e, 0, 0);
 }
 
 
@@ -1704,14 +1722,6 @@ void kv_iter_close(kv_iter_t iter){
 }
 
 
-struct graph_iter_t{
-	struct iter_t iter;
-	graph_txn_t txn;
-	logID_t beforeID;
-	graph_iter_t next;
-	int head_active;
-};
-
 
 graph_iter_t graph_iter_new(graph_txn_t txn, int dbi, void *pfx, size_t pfxlen, logID_t beforeID){
 	graph_iter_t gi = malloc(sizeof(*gi));
@@ -1953,6 +1963,10 @@ graph_iter_t graph_props(graph_txn_t txn, logID_t beforeID){
 	return _graph_entry_idx(txn, DB_PROP_IDX, 0, beforeID);
 }
 
+graph_iter_t graph_entry_props(graph_txn_t txn, entry_t entry, logID_t beforeID){
+	return _graph_entry_idx(txn, DB_PROP_IDX, entry->id, beforeID);
+}
+
 graph_iter_t graph_node_props(graph_txn_t txn, node_t node, logID_t beforeID){
 	return _graph_entry_idx(txn, DB_PROP_IDX, node->id, beforeID);
 }
@@ -1967,7 +1981,7 @@ graph_iter_t graph_prop_props(graph_txn_t txn, prop_t prop, logID_t beforeID){
 
 graph_t graph_open(const char * const path, const int flags, const int mode, const int db_flags){
 	int r;
-	graph_t g = malloc(sizeof(*g));
+	graph_t g = malloc(sizeof(struct graph_t));
 	if(g){
 		// fixme? padsize hardcoded to 1gb
 		// explicitly disable DB_WRITEMAP - graph_txn_reset current depends on nested write txns
@@ -1982,7 +1996,7 @@ graph_t graph_open(const char * const path, const int flags, const int mode, con
 }
 
 graph_txn_t graph_txn_begin(graph_t g, graph_txn_t parent, unsigned int flags){
-	graph_txn_t txn = malloc(sizeof(*txn));
+	graph_txn_t txn = malloc(sizeof(struct graph_txn_t));
 	int r = errno;
 	if(txn){
 		r = db_txn_init((txn_t)txn, (db_t)g, (txn_t)parent, flags);
@@ -2000,6 +2014,7 @@ graph_txn_t graph_txn_begin(graph_t g, graph_txn_t parent, unsigned int flags){
 				txn->prev_start = 0;
 			}
 		}else{
+			// TODO: log||warn||err?
 			free(txn);
 			errno = r;
 			txn = NULL;
@@ -2369,4 +2384,89 @@ char *graph_string(graph_txn_t txn, strID_t id, size_t *len){
 
 int graph_fd(graph_t g){
 	return g->db.fd;
+}
+
+
+
+
+db_snapshot_t graph_snapshot_new(graph_t g, int compact){
+    return db_snapshot_new((db_t)g, compact);
+}
+
+int graph_set_mapsize(graph_t g, size_t mapsize){
+    return db_set_mapsize((db_t)g, mapsize);
+}
+
+size_t graph_get_mapsize(graph_t g){
+	size_t size;
+	int r = db_get_mapsize((db_t)g, &size);
+	return r ? 0 : size;
+}
+
+size_t graph_get_disksize(graph_t g){
+	size_t size;
+    int r = db_get_disksize((db_t)g, &size);
+    return r ? 0 : size;
+}
+
+
+
+void _graph_prop_print(graph_txn_t txn,  prop_t prop) {
+    size_t klen;
+    size_t vlen;
+    char * key = graph_string(txn, prop->key, &klen);
+    char * val = graph_string(txn, prop->val, &vlen);
+    printf(", \"%s\":\"%s\"", key, vlen ? val : ""); // TODO:
+}
+
+void _graph_props_print(graph_txn_t txn, entry_t entry, logID_t beforeID) {
+    graph_iter_t props = graph_entry_props(txn, entry, beforeID);
+    prop_t prop;
+    while ((prop = (prop_t) graph_iter_next(props))) {
+        _graph_prop_print(txn, prop);
+        free(prop);
+    }
+    graph_iter_close(props);
+}
+
+void graph_node_print(graph_txn_t txn, node_t node, logID_t beforeID) {
+    size_t tlen;
+    size_t vlen;
+    char * type = graph_string(txn, node->type, &tlen);
+    char * val = graph_string(txn, node->val, &vlen);
+    printf("{\"ID\":%i, \"TYPE\":\"%s\", \"VAL\":\"%s\"",
+        node->id, type, val);
+    _graph_props_print(txn, (entry_t)node, beforeID);
+    puts("}");
+}
+
+void graph_edge_print(graph_txn_t txn, edge_t edge, logID_t beforeID) {
+    size_t tlen;
+    size_t vlen;
+    char * type = graph_string(txn, edge->type, &tlen);
+    char * val = graph_string(txn, edge->val, &vlen);
+    printf("{\"ID\":%i, \"SRC\":%i, \"TGT\":%i, \"TYPE\":\"%s\", \"VAL\":\"%s\" ",
+        edge->id, edge->src, edge->tgt, type, val);
+    _graph_props_print(txn, (entry_t)edge, beforeID);
+    puts("}");
+}
+
+void graph_nodes_print(graph_iter_t nodes) {
+    node_t node;
+    while ((node = (node_t) graph_iter_next(nodes))) {
+        graph_node_print(nodes->txn, node, nodes->beforeID);
+        free(node);
+    }
+    graph_iter_close(nodes);
+    free(nodes);
+}
+
+void graph_edges_print(graph_iter_t edges) {
+    edge_t edge;
+    while ((edge = (edge_t) graph_iter_next(edges))) {
+        graph_edge_print(edges->txn, edge, edges->beforeID);
+        free(edge);
+    }
+    graph_iter_close(edges);
+    free(edges);
 }

@@ -19,16 +19,16 @@ job = {
         "BAR": { "query": "n(foo)" }
     },
     "nodes":[
-        { "type": "foo", "value": "bar0" },
-        { "type": "foo", "value": "bar1" },
-        { "type": "foo", "value": "bar2" },
-        { "type": "foo", "value": "bar3" },
-        { "type": "foo", "value": "bar4" },
-        { "type": "foo", "value": "bar5" },
-        { "type": "foo", "value": "bar6" },
-        { "type": "foo", "value": "bar7" },
-        { "type": "foo", "value": "bar8" },
-        { "type": "foo", "value": "bar9" },
+        { "type": "foo", "value": "bar--^^-0" },
+        { "type": "foo", "value": "bar--^^-1" },
+        { "type": "foo", "value": "bar--^^-2" },
+        { "type": "foo", "value": "bar--^^-3" },
+        { "type": "foo", "value": "bar--^^-4" },
+        { "type": "foo", "value": "bar--^^-5" },
+        { "type": "foo", "value": "bar--^^-6" },
+        { "type": "foo", "value": "bar--^^-7" },
+        { "type": "foo", "value": "bar--^^-8" },
+        { "type": "foo", "value": "bar--^^-9" },
     ],
 }
 
@@ -36,7 +36,7 @@ i = 0
 while i < args.count:
     # submit new job
     try:
-        r = requests.post(args.url + '/graph', json=job, headers={ 'x-please-pipeline': 'true' })
+        r = requests.post(args.url + '/graph/e11f5a4a-a24e-11ea-9379-dca904737b1d', json=job, headers={ 'x-please-pipeline': 'true' })
     except requests.exceptions.ConnectionError:
         time.sleep(1)
         continue
@@ -45,7 +45,8 @@ while i < args.count:
         time.sleep(1)
         continue
 
-    ret = r.json()
-    print(ret['id'])
+    print(r)
+    # ret = r.json()
+    # print(ret['id'])
 
     i += 1

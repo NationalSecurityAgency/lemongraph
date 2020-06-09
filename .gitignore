@@ -1,10 +1,15 @@
 *.pyc
 *.o
+*.a
 *.so
 *.db
+*.out
 *-lock
 *.swp
 *.zip
+*.eggs
+*.DS_Store
+*.
 */__pycache__
 .idea/*
 build

@@ -6,7 +6,6 @@
 #endif
 
 #include<stddef.h>
-#include<stdarg.h>
 #include<pthread.h>
 
 // status codes

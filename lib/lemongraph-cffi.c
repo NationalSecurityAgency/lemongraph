@@ -12,25 +12,6 @@ char *_readdir(DIR *dirp){
     return de ? de->d_name : NULL;
 }
 
-db_snapshot_t graph_snapshot_new(graph_t g, int compact){
-    return db_snapshot_new((db_t)g, compact);
-}
-
-int graph_set_mapsize(graph_t g, size_t mapsize){
-    return db_set_mapsize((db_t)g, mapsize);
-}
-
-size_t graph_get_mapsize(graph_t g){
-	size_t size;
-	int r = db_get_mapsize((db_t)g, &size);
-	return r ? 0 : size;
-}
-
-size_t graph_get_disksize(graph_t g){
-	size_t size;
-    int r = db_get_disksize((db_t)g, &size);
-    return r ? 0 : size;
-}
 
 node_t asNode(entry_t e){
     return (node_t)e;

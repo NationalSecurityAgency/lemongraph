@@ -27,6 +27,7 @@
 
 typedef uint64_t logID_t;
 typedef uint64_t strID_t;
+typedef uint64_t txnID_t;
 
 typedef struct graph_t * graph_t;
 typedef struct graph_txn_t * graph_txn_t;
@@ -79,6 +80,42 @@ struct prop_t {
 	strID_t val;
 };
 
+struct graph_t {
+	struct db_t db;
+};
+
+struct graph_txn_t{
+	// everything after 'txn' is copied to a parent txn on commit success
+	struct txn_t txn;
+
+	strID_t next_strID;
+	logID_t next_logID;
+	logID_t begin_nextID;
+	int64_t node_delta;
+	int64_t edge_delta;
+
+	// everything from prev_id down may be copied to a parent txn on commit fail/abort
+	// (iff the parent didn't already have it)
+	txnID_t prev_id;
+	logID_t prev_start;
+	logID_t prev_count;
+	uint64_t prev_nodes;
+	uint64_t prev_edges;
+};
+
+struct graph_iter_t {
+	struct iter_t iter;
+	graph_txn_t txn;
+	logID_t beforeID;
+	graph_iter_t next;
+	int head_active;
+};
+
+#define TXN_DB(txn) ((txn_t)(txn))->db
+#define TXN_RW(txn) ((txn)->txn.rw)
+#define TXN_RO(txn) ((txn)->txn.ro)
+#define TXN_PARENT(txn) ((graph_txn_t)(((txn_t)(txn))->parent))
+
 
 char *graph_strerror(int err);
 
@@ -94,6 +131,12 @@ size_t graph_size(graph_t g);
 void graph_remap(graph_t g);
 void graph_close(graph_t g);
 int graph_fd(graph_t g);
+
+
+db_snapshot_t graph_snapshot_new(graph_t g, int compact);
+int graph_set_mapsize(graph_t g, size_t mapsize);
+size_t graph_get_mapsize(graph_t g);
+size_t graph_get_disksize(graph_t g);
 
 // fetch entities by logID
 entry_t graph_entry(graph_txn_t txn, const logID_t id);
@@ -137,6 +180,15 @@ edge_t graph_edge_lookup(graph_txn_t txn, node_t src, node_t tgt, void *type, si
 node_t graph_node_resolve(graph_txn_t txn, void *type, size_t tlen, void *val, size_t vlen);
 edge_t graph_edge_resolve(graph_txn_t txn, node_t src, node_t tgt, void *type, size_t tlen, void *val, size_t vlen);
 
+// resolve ids
+logID_t graph_nodeID_resolve(graph_txn_t txn, strID_t type, strID_t val);
+logID_t graph_edgeID_resolve(graph_txn_t txn, logID_t src, logID_t tgt, strID_t type, strID_t val);
+logID_t graph_ID_set(graph_txn_t txn, logID_t parent_id, strID_t key, strID_t val);
+
+// logID_t graph_node_id_resolve(graph_txn_t txn, node_t e);
+// logID_t graph_edge_id_resolve(graph_txn_t txn, edge_t e);
+// logID_t graph_ID_set(graph_txn_t txn, logID_t parent_id, prop_t e);
+
 // count nodes/edges
 size_t graph_nodes_count(graph_txn_t txn, logID_t beforeID);
 size_t graph_edges_count(graph_txn_t txn, logID_t beforeID);
@@ -159,6 +211,7 @@ graph_iter_t graph_node_edges_type_out(graph_txn_t txn, node_t node, void *type,
 graph_iter_t graph_node_edges_type(graph_txn_t txn, node_t node, void *type, size_t tlen, logID_t beforeID);
 graph_iter_t graph_node_edges_dir_type(graph_txn_t txn, node_t node, unsigned int direction, void *type, size_t tlen, logID_t beforeID);
 graph_iter_t graph_props(graph_txn_t txn, logID_t beforeID);
+graph_iter_t graph_entry_props(graph_txn_t txn, entry_t entry, logID_t beforeID);
 graph_iter_t graph_node_props(graph_txn_t txn, node_t node, logID_t beforeID);
 graph_iter_t graph_edge_props(graph_txn_t txn, edge_t edge, logID_t beforeID);
 graph_iter_t graph_prop_props(graph_txn_t txn, prop_t prop, logID_t beforeID);
@@ -169,6 +222,12 @@ char *graph_string(graph_txn_t txn, strID_t id, size_t *len);
 int graph_string_lookup(graph_txn_t txn, strID_t *id, void const *data, const size_t len);
 int graph_string_resolve(graph_txn_t txn, strID_t *id, void const *data, const size_t len);
 logID_t graph_log_nextID(graph_txn_t txn);
+
+
+void graph_node_print(graph_txn_t txn, node_t node, logID_t beforeID);
+void graph_edge_print(graph_txn_t txn, edge_t edge, logID_t beforeID);
+void graph_nodes_print(graph_iter_t nodes);
+void graph_edges_print(graph_iter_t edges);
 
 // kv storage api - domains get mapped to stringIDs via the string storage layer
 // so do keys and values if LG_KV_MAP_KEYS or LG_KV_MAP_DATA are set
@@ -218,5 +277,6 @@ int unpack_uints(int count, uint64_t *ints, void *buffer);
 int unpack_uints2(int count, uint64_t *ints, void *buffer, size_t buflen);
 int pack_uint(uint64_t i, char *buffer);
 uint64_t unpack_uint(char *buffer);
+
 
 #endif

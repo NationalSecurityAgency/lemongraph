@@ -1,4 +1,4 @@
-PYTHON=python
+PYTHON=pypy
 PYTHON_CFLAGS=-O3 -Wall
 CC+=-pipe
 CFLAGS=-fPIC -Wall -Wunused-variable -Wunused-but-set-variable -O3
@@ -30,9 +30,6 @@ deps:
 deps-update:
 	@$(MAKE) -C deps --no-print-directory update
 
-build:
-	CFLAGS="$(PYTHON_CFLAGS)" $(PYTHON) setup.py build
-
 test: test.py deps
 	CFLAGS="$(PYTHON_CFLAGS)" $(PYTHON) $<
 
@@ -59,4 +56,30 @@ lib%.so: %.o
 lib%.a: %.o
 	$(AR) rcs $@ $^
 
-.PHONY: build install uninstall test sdist deps deps-update
+.PHONY: install uninstall test sdist deps deps-update
+
+.PHONY: build build-examples build-bench
+
+examples/example: liblemongraph.a examples/example.c
+	@$(CC) $(CFLAGS) $(CPPFLAGS) -lz -pthread -L. -llemongraph \
+		examples/example.c -o examples/example
+
+bench/bench: liblemongraph.a bench/bench.c
+	@$(CC) $(CFLAGS) $(CPPFLAGS) -lz -pthread -L. -llemongraph \
+		bench/bench.c -o bench/bench
+
+build-examples: examples/example
+build-bench: bench/bench
+build: build-examples build-bench
+	CFLAGS="$(PYTHON_CFLAGS)" $(PYTHON) setup.py build
+
+.PHONY: run-example.c run-example.py run-bench.c run-bench.py
+
+run-example.c:
+	examples/example
+run-example.py:
+	$(PYTHON) examples/example.py
+run-bench.c:
+	bench/bench
+run-bench.py:
+	$(PYTHON) examples/example.py

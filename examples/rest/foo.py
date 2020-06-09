@@ -21,14 +21,12 @@ while True:
     if r.status_code != 200:
         time.sleep(1)
         continue
-
     task = r.json()
     records = iter(task)
 
     # first item is task metadata
     meta = next(records)
     print(meta['location'], r.headers['x-lg-priority'])
-
     nodes = []
     # remaining items are node/edge chains from query
     for chain in records:
@@ -38,7 +36,7 @@ while True:
         # safest to make new node or edge objects when updating
         # just use ID or type/value to identify target node/edge
         n_upd = { 'ID': n['ID'], 'foo': 1}
-
+        print("  ",n)
         # append to updates
         nodes.append(n_upd)
 

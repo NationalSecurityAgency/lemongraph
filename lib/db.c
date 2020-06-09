@@ -201,7 +201,7 @@ int db_drop(txn_t txn, int dbi, int del){
 }
 
 int txn_cursor_new(cursor_t *cursor, txn_t txn, int dbi){
-	*cursor = malloc(sizeof(**cursor));
+	*cursor = malloc(sizeof(struct cursor_t));
 	int r = errno;
 	if(*cursor){
 		r = txn_cursor_init(*cursor, txn, dbi);
@@ -294,7 +294,7 @@ int txn_commit(txn_t txn){
 }
 
 int db_txn_new(txn_t *txn, db_t db, txn_t parent, int flags){
-	*txn = malloc(sizeof(**txn));
+	*txn = malloc(sizeof(struct txn_t));
 	int r = errno;
 	if(*txn){
 		r = db_txn_init(*txn, db, parent, flags);
@@ -388,7 +388,7 @@ static INLINE int _txn_begin(db_t db, MDB_txn *parent, unsigned int flags, MDB_t
 	//  * we are a write transaction, and there is less than 1gb overhead
 	//  * txn fails with MDB_MAP_RESIZED
 	// However, mapsize may only be altered if there are no active txns in this process.
-	pthread_mutex_lock(&db->mutex);
+	pthread_mutex_lock(&(db->mutex));
 	if(flags & MDB_RDONLY){
 		// don't care about overhead for readonly txns
 		r = _mdb_txn_begin((MDB_env *)db->env, parent, flags, txn);
@@ -430,7 +430,7 @@ int db_remap(db_t db){
 }
 
 int db_new(db_t *db, const char * const path, const int flags, const int mode, int mdb_flags, int ndbi, dbi_t *dbis, size_t padsize){
-	*db = malloc(sizeof(**db));
+	*db = malloc(sizeof(struct db_t));
 	int r = errno;
 	if(*db){
 		r = db_init(*db, path, flags, mode, mdb_flags, ndbi, dbis, padsize);
@@ -473,11 +473,23 @@ int db_init(db_t db, const char * const path, const int flags, const int mode, i
 	db->updated = 0;
 	db->release = 0;
 
-	r = pthread_mutex_init(&db->mutex, NULL);
+	// pthread_mutexattr_t mutexattr;
+	// r = pthread_mutexattr_init(&mutexattr);
+	// FAIL(r, err, errno, fail);
+	// r = pthread_mutexattr_setpshared(&mutexattr, PTHREAD_PROCESS_SHARED);
+	// FAIL(r, err, errno, fail);
+	// r = pthread_mutexattr_setprotocol(&mutexattr, PTHREAD_PRIO_INHERIT);
+	// FAIL(r, err, errno, fail);
+	r = pthread_mutex_init(&db->mutex, NULL); //&mutexattr);
 	FAIL(r, err, errno, fail);
 	init_status++;
 
-	r = pthread_cond_init(&db->cond, NULL);
+	// pthread_condattr_t condattr;
+	// r = pthread_condattr_init(&condattr);
+	// FAIL(r, err, errno, fail);
+	// r = pthread_condattr_setpshared(&condattr, PTHREAD_PROCESS_SHARED);
+	// FAIL(r, err, errno, fail);
+	r = pthread_cond_init(&db->cond, NULL); //&condattr);
 	FAIL(r, err, errno, fail);
 	init_status++;
 
@@ -583,14 +595,20 @@ fail:
 	return err;
 }
 
+
+
 void db_close(db_t db){
+	// To fix MacOS `mdb_env_close` seg faulting
+	// int dead;
+	// mdb_reader_check((MDB_env *)db->env, &dead);
+		
 	free(db->handles);
 	mdb_env_close((MDB_env *)db->env);
 	((volatile db_t) db)->env = NULL;
 	pthread_cond_destroy(&db->cond);
 	pthread_mutex_destroy(&db->mutex);
 	if(db->release)
-		free(db);
+		free(db);	
 }
 
 // will fail if this process has active txns/snapshots
@@ -598,7 +616,7 @@ void db_close(db_t db){
 int db_set_mapsize(db_t db, size_t mapsize){
 	int r = -1;
 	pthread_mutex_lock(&db->mutex);
-	if(0 == db->txns)
+	if (0 == db->txns)
 		r = mdb_env_set_mapsize((MDB_env *)db->env, mapsize);
 	pthread_mutex_unlock(&db->mutex);
 	return r;
@@ -709,7 +727,7 @@ void iter_close(iter_t iter){
 
 
 
-struct db_snapshot_t{
+struct db_snapshot_t {
 	db_t db;
 	int compact, ret, fds[2];
 	pthread_t thread;
