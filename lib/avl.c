@@ -22,7 +22,7 @@ struct _avl_tree_t{
 	avl_node_t trash;  // trash stack of released nodes
 	avl_node_t target; // holds node ptr of target node of last avl_insert/avl_delete
 	avl_cmp_func cmp;  // key compare function
-	void *data;        // user data to pass to cmp()
+	void *userdata;    // user data to pass to cmp()
 	size_t size;       // current number of nodes in tree
 	int idx;           // next available node from current page
 	int pages;         // number of allocated pages
@@ -77,8 +77,13 @@ void avl_free(avl_tree_t tree){
 	free(tree);
 }
 
-static int cmp_ptr(void *a, void *b, void *data){
-	return memcmp(&a, &b, sizeof(a));
+static inline int _cmp_ptr(unsigned char *a, unsigned char *b){
+	return a < b ? -1 : a > b;
+}
+
+static int cmp_ptr(void *a, void *b, void *userdata){
+	(void)userdata;
+	return _cmp_ptr(a, b);
 }
 
 static inline void *_avl_page_alloc(size_t bs){
@@ -89,7 +94,7 @@ static inline void *_avl_page_alloc(size_t bs){
 	return page;
 }
 
-avl_tree_t avl_new2(avl_cmp_func cmp, void *data, size_t nodes){
+avl_tree_t avl_new2(avl_cmp_func cmp, void *userdata, size_t nodes){
 	avl_tree_t tree = NULL;
 
 	// initialize page size
@@ -112,13 +117,13 @@ avl_tree_t avl_new2(avl_cmp_func cmp, void *data, size_t nodes){
 		tree->cmp = cmp ? cmp : cmp_ptr;
 		tree->pages = 1;
 		tree->bs = bs;
-		tree->data = data;
+		tree->userdata = userdata;
 	}
 	return tree;
 }
 
-avl_tree_t avl_new(avl_cmp_func cmp, void *data){
-	return avl_new2(cmp, data, 0);
+avl_tree_t avl_new(avl_cmp_func cmp, void *userdata){
+	return avl_new2(cmp, userdata, 0);
 }
 
 static inline void _avl_release_node(avl_tree_t tree, avl_node_t n){
@@ -195,12 +200,21 @@ static inline avl_node_t _avl_balance(avl_node_t n, const int target){
 	return n;
 }
 
-static inline avl_node_t _avl_insert(avl_tree_t tree, void *key, avl_node_t n){
+static inline avl_node_t _avl_prune_min(avl_node_t n, avl_node_t *trimmed){
+	if(n->child[0]){
+		n->child[0] = _avl_prune_min(n->child[0], trimmed);
+		return _avl_balance(n, 1);
+	}
+	*trimmed = n;
+	return n->child[1];
+}
+
+static inline avl_node_t __avl_insert(avl_tree_t tree, void *key, avl_node_t n, void * const userdata){
 	if(n){
-		const int cmp = tree->cmp(key, n->key, tree->data);
+		const int cmp = tree->cmp(key, n->key, userdata);
 		if(cmp){
 			const int target = (cmp > 0);
-			avl_node_t child = _avl_insert(tree, key, n->child[target]);
+			avl_node_t child = __avl_insert(tree, key, n->child[target], userdata);
 			if(child){
 				n->child[target] = child;
 				n = _avl_balance(n, target);
@@ -220,81 +234,185 @@ static inline avl_node_t _avl_insert(avl_tree_t tree, void *key, avl_node_t n){
 	return n;
 }
 
-static inline avl_node_t _avl_prune_min(avl_node_t n, avl_node_t *trimmed){
-	if(n->child[0]){
-		n->child[0] = _avl_prune_min(n->child[0], trimmed);
-		return _avl_balance(n, 1);
-	}
-	*trimmed = n;
-	return n->child[1];
-}
-
-static avl_node_t _avl_delete(avl_tree_t tree, void *key, avl_node_t n){
+static inline avl_node_t __avl_find(avl_tree_t tree, void *key, avl_node_t n, void * const userdata){
 	if(n){
-		const int cmp = tree->cmp(key, n->key, tree->data);
+		const int cmp = tree->cmp(key, n->key, userdata);
 		if(cmp){
 			const int target = (cmp > 0);
-			n->child[target] = _avl_delete(tree, key, n->child[target]);
-			n = _avl_balance(n, !target);
-		}else{
-			avl_node_t orig = tree->target = n;
-			if(orig->child[1]){
-				avl_node_t next, next_right;
-				next_right = _avl_prune_min(orig->child[1], &next);
-				next->child[1] = next_right;
-				next->child[0] = orig->child[0];
-				n = _avl_balance(next, 0);
-			}else if((n = orig->child[0])){
-				n = _avl_balance(n, 1);
+			avl_node_t child = __avl_find(tree, key, n->child[target], userdata);
+			if(child){
+				n->child[target] = child;
+				n = _avl_balance(n, target);
+			}else{
+				n = NULL;
 			}
-			_avl_release_node(tree, orig);
+		}else{
+			tree->target = n;
 		}
 	}
 	return n;
 }
 
-static int _avl_walk(avl_node_t n, avl_walk_cb cb, void *data, const int dir){
+static inline avl_node_t __avl_snip(avl_tree_t tree, avl_node_t n){
+	avl_node_t orig = tree->target = n;
+	if(orig->child[1]){
+		avl_node_t next, next_right;
+		next_right = _avl_prune_min(orig->child[1], &next);
+		next->child[1] = next_right;
+		next->child[0] = orig->child[0];
+		n = _avl_balance(next, 0);
+	}else if((n = orig->child[0])){
+		n = _avl_balance(n, 1);
+	}
+	_avl_release_node(tree, orig);
+	return n;
+}
+
+static avl_node_t __avl_delete(avl_tree_t tree, void *key, avl_node_t n, void *userdata){
+	if(n){
+		const int cmp = tree->cmp(key, n->key, userdata);
+		if(cmp){
+			const int target = (cmp > 0);
+			n->child[target] = __avl_delete(tree, key, n->child[target], userdata);
+			n = _avl_balance(n, !target);
+		}else{
+			n = __avl_snip(tree, n);
+		}
+	}
+	return n;
+}
+
+static avl_node_t __avl_pop(avl_tree_t tree, avl_node_t n, int target){
+	if(n->child[target]){
+		n->child[target] = __avl_pop(tree, n->child[target], target);
+		n = _avl_balance(n, !target);
+	}else{
+		n = __avl_snip(tree, n);
+	}
+	return n;
+}
+
+static avl_node_t __avl_peek(avl_tree_t tree, avl_node_t n, int target){
+	if(n->child[target]){
+		n->child[target] = __avl_peek(tree, n->child[target], target);
+		n = _avl_balance(n, !target);
+	}else{
+		tree->target = n;
+	}
+	return n;
+}
+
+static int _avl_walk(avl_node_t n, avl_walk_cb cb, void *cb_data, const int dir){
 	int halt = 0;
 	if(!n)
 		return halt;
-	if((halt = _avl_walk(n->child[dir], cb, data, dir)))
+	if((halt = _avl_walk(n->child[dir], cb, cb_data, dir)))
 		return halt;
-	if((halt = cb((void **)n, data)))
+	if((halt = cb((void **)n, cb_data)))
 		return halt;
-	return halt = _avl_walk(n->child[!dir], cb, data, dir);
+	return halt = _avl_walk(n->child[!dir], cb, cb_data, dir);
 }
 
-void **avl_insert(avl_tree_t tree, void *key){
+static int _avl_range(avl_cmp_func cmp, avl_node_t n, void *key, void *userdata, avl_walk_cb cb, void *cb_data, const int dir, int chk){
+	int halt = 0;
+	if(!n)
+		return halt;
+	if(cmp(key, n->key, userdata) * (dir ? -1 : 1) <= 0){
+		if((halt = _avl_range(cmp, n->child[dir], key, userdata, cb, cb_data, dir, chk)))
+			return halt;
+		if((halt = cb((void **)n, cb_data)))
+			return halt;
+	}else{
+		chk++;
+	}
+	// if parent node and current node was >= search key, all children will be >= search key too
+	if(chk > 1)
+		return halt = _avl_walk(n->child[!dir], cb, cb_data, dir);
+	return halt = _avl_range(cmp, n->child[!dir], key, userdata, cb, cb_data, dir, chk);
+}
+
+static inline void **_avl_insert(avl_tree_t tree, void *key, void *userdata){
 	tree->target = NULL;
-	avl_node_t newroot = _avl_insert(tree, key, tree->root);
+	avl_node_t newroot = __avl_insert(tree, key, tree->root, userdata);
 	if(newroot)
 		tree->root = newroot;
 	return (void **) tree->target;
 }
 
-void **avl_find(avl_tree_t tree, void *key){
-	avl_node_t n = tree->root;
-	int r;
-	while(n){
-		r = tree->cmp(key, n->key, tree->data);
-		if(r < 0)
-			n = n->child[0];
-		else if(r)
-			n = n->child[1];
-		else
-			break;
-	}
-	return (void **)n;
-}
-
-void **avl_delete(avl_tree_t tree, void *key){
+static inline void **_avl_find(avl_tree_t tree, void *key, void *userdata){
 	tree->target = NULL;
-	tree->root = _avl_delete(tree, key, tree->root);
+	avl_node_t newroot = __avl_find(tree, key, tree->root, userdata);
+	if(newroot)
+		tree->root = newroot;
 	return (void **) tree->target;
 }
 
-int avl_walk(avl_tree_t tree, avl_walk_cb cb, void *data, int desc){
-	return _avl_walk(tree->root, cb, data, desc ? 1 : 0);
+static inline void **_avl_delete(avl_tree_t tree, void *key, void *userdata){
+	tree->target = NULL;
+	tree->root = __avl_delete(tree, key, tree->root, userdata);
+	return (void **) tree->target;
+}
+
+static inline void **_avl_pop(avl_tree_t tree, int tail){
+	tree->target = NULL;
+	if(tree->root)
+		tree->root = __avl_pop(tree, tree->root, tail);
+	return (void **) tree->target;
+}
+
+static inline void **_avl_peek(avl_tree_t tree, int tail){
+	tree->target = NULL;
+	if(tree->root)
+		tree->root = __avl_peek(tree, tree->root, tail);
+	return (void **) tree->target;
+}
+
+void **avl_insert(avl_tree_t tree, void *key){
+	return _avl_insert(tree, key, tree->userdata);
+}
+
+void **avl_insert2(avl_tree_t tree, void *key, void *userdata){
+	return  _avl_insert(tree, key, userdata);
+}
+
+void **avl_find(avl_tree_t tree, void *key){
+	return _avl_find(tree, key, tree->userdata);
+}
+
+void **avl_find2(avl_tree_t tree, void *key, void *userdata){
+	return _avl_find(tree, key, userdata);
+}
+
+void **avl_delete(avl_tree_t tree, void *key){
+	return _avl_delete(tree, key, tree->userdata);
+}
+
+void **avl_delete2(avl_tree_t tree, void *key, void *userdata){
+	return _avl_delete(tree, key, userdata);
+}
+
+void **avl_pop(avl_tree_t tree, int tail){
+	return _avl_pop(tree, tail ? 1 : 0);
+}
+
+void **avl_peek(avl_tree_t tree, int tail){
+	return _avl_peek(tree, tail ? 1 : 0);
+}
+
+void **avl_root(avl_tree_t tree){
+	return (void **)tree->root;
+}
+
+int avl_walk(avl_tree_t tree, avl_walk_cb cb, void *userdata, int desc){
+	return _avl_walk(tree->root, cb, userdata, desc ? 1 : 0);
+}
+
+int avl_range(avl_tree_t tree, void *key, avl_walk_cb cb, void *cb_data, int desc){
+	return _avl_range(tree->cmp, tree->root, key, tree->userdata, cb, cb_data, desc ? 1 : 0, 0);
+}
+
+int avl_range2(avl_tree_t tree, void *key, void *userdata, avl_walk_cb cb, void *cb_data, int desc){
+	return _avl_range(tree->cmp, tree->root, key, userdata, cb, cb_data, desc ? 1 : 0, 0);
 }
 
 int avl_height(avl_tree_t tree){
@@ -322,21 +440,32 @@ int avl_node_height(void **n){
 #include<stdio.h>
 #include<time.h>
 
-static int my_cmp(void *a, void *b, void *data){
+static int my_cmp(void *a, void *b, void *userdata){
 	return (long)a > (long)b ? 1 : (long)a < (long) b ? -1 : 0;
 }
 
-static int walk_cb(void **key, void *data){
+static int walk_cb(void **key, void *userdata){
 	printf("%*.0s%ld\n", 4 * avl_node_height(key), "", (long)(*key));
+	return 0;
+}
+
+static int walk_range_cb(void **key, void *userdata){
+	printf(" %ld", (long)(*key));
 	return 0;
 }
 
 int main(int argc, char **argv){
 	avl_tree_t tree = avl_new2(my_cmp, NULL, 10000);
 	assert(tree);
-
+	intptr_t t[] = { 9, 5, 10, 0, 6, 11, -1, 1, 2 };
+	const int tc = sizeof(t) / sizeof(*t);
 	printf("=== load/walk tree (asc) ===\n");
-	avl_insert(tree, (void *)9);
+	{
+		int i;
+		for(i = 0; i < tc; i++)
+			avl_insert(tree, (void *)t[i]);
+	}
+/*	avl_insert(tree, (void *)9);
 	avl_insert(tree, (void *)5);
 	avl_insert(tree, (void *)10);
 	avl_insert(tree, (void *)0);
@@ -344,13 +473,38 @@ int main(int argc, char **argv){
 	avl_insert(tree, (void *)11);
 	avl_insert(tree, (void *)-1);
 	avl_insert(tree, (void *)1);
-	avl_insert(tree, (void *)2);
+	avl_insert(tree, (void *)2);*/
 	avl_walk(tree, walk_cb, NULL, 0);
+
+	printf("=== walk tree range (asc) ===\n");
+	{
+		int i;
+		for(i = 0; i < tc; i++){
+			printf("%ld(0):", t[i]);
+			avl_range(tree, (void *)t[i], walk_range_cb, NULL, 0);
+			printf("\n%ld(1):", t[i]);
+			avl_range(tree, (void *)t[i], walk_range_cb, NULL, 1);
+			printf("\n");
+		}
+		// now try it w/ a value not present in the tree
+		printf("%d(0):", 3);
+		avl_range(tree, (void *)3, walk_range_cb, NULL, 0);
+		printf("\n%d(1):", 3);
+		avl_range(tree, (void *)3, walk_range_cb, NULL, 1);
+		printf("\n");
+	}
 
 	printf("=== delete item, walk tree (desc) ===\n");
 	avl_delete(tree, (void *)10);
 	avl_walk(tree, walk_cb, NULL, 1);
 
+	printf("=== pop from alternating ends ===\n");
+	void **found;
+	int flag = 0;
+	while((found = avl_pop(tree, flag))){
+		printf("%d\n", (int)(intptr_t)*found);
+		flag = !flag;
+	}
 	avl_reset(tree);
 
 	int i = 1, count = 500000, loops = 1, seed = 1;
