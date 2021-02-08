@@ -1,5 +1,3 @@
-ARG LG=/lg
-
 FROM debian:10-slim AS base
 
 RUN apt-get update && apt-get install -y -q python3-cffi python3-setuptools python3-six && apt-get clean
@@ -16,11 +14,11 @@ WORKDIR /root
 RUN make deps
 
 RUN python3 setup.py bdist_wheel
-RUN pip3 install --target=$LG dist/*.whl
+RUN pip3 install --target=/lg dist/*.whl
 
 FROM base
 
-COPY --from=build $LG $LG
+COPY --from=build /lg /lg
 
 EXPOSE 8000
 WORKDIR /data
