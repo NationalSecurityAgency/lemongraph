@@ -1,4 +1,5 @@
-PYTHON=python
+SHELL:=/bin/bash
+PYTHON:=$(firstword $(shell type -p python3 python 2>/dev/null))
 PYTHON_CFLAGS=-O3 -Wall
 CC+=-pipe
 CFLAGS=-fPIC -Wall -Wunused-variable -Wunused-but-set-variable -O3
