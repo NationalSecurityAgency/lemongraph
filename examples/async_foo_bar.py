@@ -5,7 +5,7 @@ import asyncio
 import random
 import sys
 
-from aiohttp.client_exceptions import ClientConnectorError, ServerDisconnectedError
+from aiohttp.client_exceptions import ClientConnectorError, ServerDisconnectedError, ClientOSError
 
 class Adapter(object):
     max_active = 1
@@ -18,13 +18,14 @@ class Adapter(object):
     async def run(self, active):
         print("spawn: %s" % self.name)
         try:
-            async with aiohttp.ClientSession(headers={'x-please-pipeline':'1'}) as session:
+#            async with aiohttp.ClientSession(headers={'x-please-pipeline1':'1'}) as session:
+            async with aiohttp.ClientSession() as session:
                 sleep = 0.05
                 while sleep < 0.5:
-                    if await asyncio.shield(self._do_task(session), loop=self.loop):
+                    if await asyncio.shield(self._do_task(session)):
                         sleep = 0.05
                     else:
-                        await asyncio.sleep(sleep, self.loop)
+                        await asyncio.sleep(sleep)
                         sleep += 0.05
         except Exception as e:
             print(e)
@@ -48,8 +49,8 @@ class Adapter(object):
                 try:
                     await session.post(self.base + loc, json=ret)
                     return True
-                except ClientConnectorError:
-                    await asyncio.sleep(1, loop=self.loop)
+                except (ClientConnectorError, ServerDisconnectedError, ClientOSError):
+                    await asyncio.sleep(1)
 
 class Foo(Adapter):
     name = 'FOO'
@@ -94,12 +95,13 @@ class Monitor(object):
             except KeyError:
                 self.adapters[inst.key] = [inst]
 
-        async with aiohttp.ClientSession(headers={'x-please-pipeline':'1'}) as session:
+#        async with aiohttp.ClientSession(headers={'x-please-pipeline':'1'}) as session:
+        async with aiohttp.ClientSession() as session:
             while True:
                 try:
                     res = await session.get(self.poll)
-                except (ClientConnectorError, ServerDisconnectedError):
-                    await asyncio.sleep(1, loop=self.loop)
+                except (ClientConnectorError, ServerDisconnectedError, ClientOSError):
+                    await asyncio.sleep(1)
                     continue
                 status = await res.json()
                 for name, data in status.items():
@@ -112,7 +114,7 @@ class Monitor(object):
                         while count and insts:
                             count -= 1
                             asyncio.ensure_future(insts.pop().run(insts), loop=self.loop)
-                await asyncio.sleep(1, loop=self.loop)
+                await asyncio.sleep(1)
 
 async def main(loop, base):
     m = Monitor(loop, base)
