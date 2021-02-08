@@ -71,8 +71,8 @@ Python 3 should work now though - replace `python`/`pypy`/`pip` and package name
 * CPython on CentOS 6/7:
 	* `yum install -y gcc gcc-c++ make libffi-devel zlib-devel python-devel python-setuptools`
 	* `pip install 'cffi>=1.0'`
-* CPython on Ubuntu 15.04 - 16.04:
-	* `apt-get install libffi-dev zlib1g-dev python-dev python-cffi`
+* CPython on Ubuntu 15.04 - 20.04:
+	* `apt-get install gcc libffi-dev zlib1g-dev python-dev python-cffi`
 * CPython (compiled) - just bootstrap setuptools and install cffi:
 	* `python -mensurepip`
 	* `pip install 'cffi>=1.0'`
