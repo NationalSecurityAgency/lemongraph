@@ -1,12 +1,12 @@
-FROM alpine:3.10 AS base
+ARG LG=/lg
+
+FROM alpine:3.12 AS base
 
 RUN apk update && apk add --no-cache py3-cffi py3-setuptools py3-six
 
-
 FROM base AS build
 
-
-RUN apk add bash curl gcc git make musl-dev python3-dev py3-pip py3-setuptools zlib-dev
+RUN apk add bash curl g++ gcc git libffi-dev make musl-dev python3-dev py3-pip py3-setuptools zlib-dev
 
 COPY . /root
 WORKDIR /root
@@ -16,13 +16,13 @@ RUN pip3 install wheel
 RUN make deps
 
 RUN CPPFLAGS=-DHAVE_FDATASYNC=1 python3 setup.py bdist_wheel
-RUN pip3 install dist/*.whl
+RUN pip3 install --target=$LG dist/*.whl
 
 FROM base
 
-COPY --from=build /usr/lib/python3.7/site-packages /usr/lib/python3.7/site-packages
-
+COPY --from=build $LG $LG
 
 EXPOSE 8000
 WORKDIR /data
+ENV PYTHONPATH=$LG
 ENTRYPOINT [ "python3", "-mLemonGraph.server", "-i", "0.0.0.0" ]

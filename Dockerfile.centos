@@ -1,10 +1,10 @@
+ARG LG=/lg
+
 FROM centos:7 AS base
 
-RUN yum install -y epel-release && yum clean all
-RUN yum install -y python36-cffi python36-setuptools python36-six && yum clean all
+RUN yum install -y epel-release && yum install -y python36-cffi python36-setuptools python36-six && yum clean all
 
 FROM base AS build
-
 
 RUN yum install -y curl gcc git make python36-devel python36-pip python36-setuptools zlib-devel
 
@@ -13,16 +13,16 @@ WORKDIR /root
 
 RUN pip3.6 install wheel
 
-
+RUN make deps
 
 RUN python3.6 setup.py bdist_wheel
-RUN pip3 install dist/*.whl
+RUN pip3 install --target=$LG dist/*.whl
 
 FROM base
 
-COPY --from=build /usr/local/lib/python3.6 /usr/local/lib/python3.6
-COPY --from=build /usr/local/lib64/python3.6 /usr/local/lib64/python3.6
+COPY --from=build $LG $LG
 
 EXPOSE 8000
 WORKDIR /data
+ENV PYTHONPATH=$LG
 ENTRYPOINT [ "python3", "-mLemonGraph.server", "-i", "0.0.0.0" ]

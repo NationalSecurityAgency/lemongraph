@@ -1,28 +1,28 @@
-FROM ubuntu:disco AS base
+ARG LG=/lg
+
+FROM ubuntu:focal AS base
 
 RUN apt-get update && apt-get install -y -q python3-cffi python3-setuptools python3-six && apt-get clean
 
-
 FROM base AS build
 
-RUN apt-get update
-RUN apt-get install -y -q curl gcc git make python3-dev python3-pip python3-setuptools python3-wheel zlib1g-dev
+RUN apt-get install -y -q curl gcc git libffi-dev make python3-dev python3-pip python3-setuptools python3-wheel zlib1g-dev
 
 COPY . /root
 WORKDIR /root
 
 
 
-
+RUN make deps
 
 RUN python3 setup.py bdist_wheel
-RUN pip3 install dist/*.whl
+RUN pip3 install --target=$LG dist/*.whl
 
 FROM base
 
-COPY --from=build /usr/local/lib/python3.7/dist-packages /usr/local/lib/python3.7/dist-packages
-
+COPY --from=build $LG $LG
 
 EXPOSE 8000
 WORKDIR /data
+ENV PYTHONPATH=$LG
 ENTRYPOINT [ "python3", "-mLemonGraph.server", "-i", "0.0.0.0" ]
