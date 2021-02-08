@@ -22,5 +22,5 @@ COPY --from=build /lg /lg
 
 EXPOSE 8000
 WORKDIR /data
-ENV PYTHONPATH=$LG
+ENV PYTHONPATH=/lg
 ENTRYPOINT [ "python3", "-mLemonGraph.server", "-i", "0.0.0.0" ]
