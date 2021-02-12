@@ -336,7 +336,7 @@ class Service(object):
                 pid, status = os.wait()
                 if pid > 0:
                     proc, label, target = procs.pop(pid)
-                    if status is 0:
+                    if status == 0:
                         log_proc.info("-%s(%d): exit: %d", label, pid, status)
                     else:
                         log_proc.warning("-%s(%d): exit: %d", label, pid, status)
@@ -356,7 +356,7 @@ class Service(object):
                 except OSError:
                     break
                 proc, label, target = procs.pop(pid)
-                if status is 0:
+                if status == 0:
                     log_proc.info("-%s(%d): exit: %d", label, pid, status)
                 else:
                     log_proc.warning("-%s(%d): exit: %d", label, pid, status)
@@ -408,7 +408,7 @@ class Service(object):
                         try:
                             req = Request(conn, timeout=self.timeout)
                             # hmm - it may not make sense to allow pipelining by default - look for magic header
-                            if 'HTTP/1.1' == req.version and ('x-please-pipeline' not in req.headers or self.maxreqs is 0):
+                            if 'HTTP/1.1' == req.version and ('x-please-pipeline' not in req.headers or self.maxreqs == 0):
                                 res.headers.set('Connection', 'close')
                             self.process(req, res)
                         except HTTPError as e:
@@ -514,6 +514,7 @@ class Response(object):
         200: 'OK',
         201: 'Created',
         204: 'No Content',
+        304: 'Not Modified',
         400: 'Bad Request',
         403: 'Forbidden',
         404: 'Not Found',
@@ -525,6 +526,11 @@ class Response(object):
         503: 'Service Unavailable',
         507: 'Insufficient Storage',
     }
+
+    no_body = set([
+        304,
+    ])
+
     def __init__(self, sock):
         self._code = None
         self.sock = sock
@@ -553,7 +559,7 @@ class Response(object):
             'reason': self.codes[code],
             'message': message,
         }
-        js = json_encode(body) + '\n'
+        js = '' if code in self.no_body else json_encode(body) + '\n'
         if self.begun:
             # oops - log error to console and just disconnect
             raise Disconnected(str(body))
@@ -561,8 +567,9 @@ class Response(object):
         self.headers.reset()
         for header in headers:
             self.headers.set(*header)
-        self.headers.set('Content-Type', 'application/json')
-        self.headers.set('Content-Length', len(js))
+        if js:
+            self.headers.set('Content-Type', 'application/json')
+            self.headers.set('Content-Length', len(js))
         if close:
             self.headers.set('Connection', 'close')
         self.begin(code=code)
