@@ -766,12 +766,15 @@ class D3_UUID(_Streamy, Handler):
     def get(self, g, txn, _, uuid):
         self.map = {}
         stop = int(self.param('stop', 0))
+        pos = int(self.param('pos', 0))
         if stop:
             txn.beforeID = stop + 1
+        if txn.nextID == pos:
+            raise HTTPError(304, 'Not Modified')
         return self._dump_json(txn)
 
     def _dump_json(self, txn):
-        yield '{ "nodes":['
+        yield '{"pos":' + str(txn.nextID) + ',"nodes":['
         nmap = {}
         nidx = 0
         nodes = txn.nodes()

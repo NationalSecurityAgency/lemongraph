@@ -90,8 +90,31 @@ function halt_sim(){
     simulation.stop()
 }
 
-d3.json("/d3/" + uuid + window.location.search, function(error, graph) {
-  if (error) throw error
+var pos = 0
+
+function updategraph(){
+	var qs = window.location.search
+	if (qs == "?" || qs == ""){
+		qs = "?pos=" + pos
+	}else{
+		qs += "&pos=" + pos
+	}
+	d3.json("/d3/" + uuid + qs, makegraph)
+}
+
+function makegraph(error, graph) {
+  if (error){
+    w.setTimeout(updategraph, 1000)
+    throw error
+  }
+
+  if(graph["pos"] == pos){
+    w.setTimeout(updategraph, 1000)
+    return
+  }
+
+  pos = graph["pos"]
+  svg.selectAll("*").remove();
 
   for(var i = graph.nodes.length - 1; i >= 0; i--){
     graph.nodes[i].neighbors = {}
@@ -196,7 +219,10 @@ d3.json("/d3/" + uuid + window.location.search, function(error, graph) {
         .attr("cx", function(d) { return d.x })
         .attr("cy", function(d) { return d.y })
   }
-})
+  w.setTimeout(updategraph, 1000)
+}
+
+updategraph()
 
 function dragstarted(d) {
   if (!d3.event.active) simulation.alphaTarget(0.2).restart()
