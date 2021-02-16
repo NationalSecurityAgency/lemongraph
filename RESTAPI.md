@@ -127,7 +127,7 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 		* __chains__ (*list*): list of node[->edge->node]\* chains
 		* __nodes__ (*list*): list of node objects
 		* __edges__ (*list*): list of edge objects
-		* __adapters__ (*list*): list of [LG-Lite adapter objects](#lgconfigjob_uuidadapter)
+		* __adapters__ (*dict*): dictionary of __adapter__ name to [LG-Lite adapter config objects](#lgconfigjob_uuidadapter)
 	* node objects must include primary key data:
 		* __type__ (*string*)
 		* __value__ (*string*)
@@ -186,7 +186,7 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 		* __chains__ (*list*): list of node[->edge->node]\* chains
 		* __nodes__ (*list*): list of node objects
 		* __edges__ (*list*): list of edge objects
-		* __adapters__ (*list*): list of [LG-Lite adapter objects](#lgconfigjob_uuidadapter)
+		* __adapters__ (*dict*): dictionary of __adapter__ name to [LG-Lite adapter config objects](#lgconfigjob_uuidadapter)
 	* node objects must include primary key data:
 		* either:
 			* __type__ (*string*)
