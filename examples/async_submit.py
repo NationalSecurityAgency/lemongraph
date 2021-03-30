@@ -47,7 +47,8 @@ job = {
 }
 
 async def main():
-    async with aiohttp.ClientSession(headers={'x-please-pipeline': 'true'}, connector=connector) as session:
+#    async with aiohttp.ClientSession(connector=connector, headers={'x-please-pipeline': '1'}) as session:
+    async with aiohttp.ClientSession(connector=connector) as session:
         i = 0
         while i < args.count:
             # submit new job

@@ -56,7 +56,8 @@ i = 0
 while i < args.count:
     # submit new job
     try:
-        status, headers, ret = rc.post('/graph', json=job, headers={ 'x-please-pipeline': '1' })
+#        status, headers, ret = rc.post('/graph', json=job, headers={ 'x-please-pipeline': '1' })
+        status, headers, ret = rc.post('/graph', json=job)
     except rc.error:
         time.sleep(1)
         continue
