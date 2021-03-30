@@ -50,7 +50,7 @@ snapshot: deps
 	@rm -rf $(SNAPSHOT) $(SNAPSHOT).zip
 	@git clone . $(SNAPSHOT)
 	@cp -a deps/. $(SNAPSHOT)/deps/.
-	@git -C $(SNAPSHOT) remote remove origin
+	@cd $(SNAPSHOT) && git remote remove origin
 	@rm -rf $(SNAPSHOT)/.git/logs
 	@zip -q -r9 $(SNAPSHOT).zip $(SNAPSHOT)
 	@rm -rf $(SNAPSHOT)
