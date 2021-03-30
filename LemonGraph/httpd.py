@@ -404,11 +404,11 @@ class Service(object):
         sock_fd = self.sock.fileno()
         pipe_fd = self.pr
 
-        poll = select.poll()
-        poll.register(pipe_fd, select.POLLIN)
+        ifds = set()
+        ifds.add(pipe_fd)
         while self.maxreqs:
-            poll.register(sock_fd, select.POLLIN)
-            fds = tuple(fd for fd, event in poll.poll(1000))
+            ifds.add(sock_fd)
+            fds, _, _ = select.select(ifds, [], [], 1000)
             if pipe_fd in fds:
                 raise Graceful
             if sock_fd not in fds:
@@ -420,16 +420,16 @@ class Service(object):
 
             log.debug('client %s:%d: connected', *addr)
             conn_fd = conn.fileno()
-            poll.unregister(sock_fd)
-            poll.register(conn_fd, select.POLLIN)
+            ifds.remove(sock_fd)
+            ifds.add(conn_fd)
             self.maxreqs -= 1
             try:
                 while True:
                     # fixme - perhaps this should have a timeout?
-                    fds = tuple(fd for fd, event in poll.poll())
+                    fds, _, _ = select.select(ifds, [], [])
                     if pipe_fd in fds:
                         self.maxreqs = 0
-                        poll.unregister(pipe_fd)
+                        ifds.remove(pipe_fd)
                         if conn_fd not in fds:
                             raise Disconnected('server shutdown', level='debug')
                     elif conn_fd not in fds:
@@ -463,7 +463,7 @@ class Service(object):
                 log.error('Unhandled exception: %s', traceback.print_exception(*info))
                 sys.exit(1)
             finally:
-                poll.unregister(conn)
+                ifds.remove(conn_fd)
                 close_socket(conn)
                 log.debug('client %s:%d: finished', *addr)
 
