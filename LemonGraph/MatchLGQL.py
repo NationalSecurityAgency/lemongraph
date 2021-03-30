@@ -601,6 +601,11 @@ class MatchLGQL(object):
 #                return False
 #        return True
 
+    @property
+    def signature(self):
+        return ''.join(m['type'] for m in self.matches if m['keep'])
+
+
 def eval_test(obj, test):
     target = obj
     try:

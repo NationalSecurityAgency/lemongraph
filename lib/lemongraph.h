@@ -218,5 +218,7 @@ int unpack_uints(int count, uint64_t *ints, void *buffer);
 int unpack_uints2(int count, uint64_t *ints, void *buffer, size_t buflen);
 int pack_uint(uint64_t i, char *buffer);
 uint64_t unpack_uint(char *buffer);
+int pack_uuid(char *uuid, char *bin);
+int unpack_uuid(char *bin, char *uuid);
 
 #endif

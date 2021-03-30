@@ -1,7 +1,7 @@
 #!/bin/bash
 
 LMDB_REPO=https://github.com/LMDB/lmdb.git
-LMDB_COMMIT=a99290f253a8df45679c8e2b159e83b835e8eb24
+LMDB_COMMIT=48a7fed59a8aae623deff415dda27097198ca0c1
 
 function lg_fetch_lmdb(){
 	git_fetch_commit lmdb "$LMDB_COMMIT" "$LMDB_REPO"

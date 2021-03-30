@@ -1,10 +1,16 @@
 import os
+import random
+import shutil
+import signal
+import sys
 import tempfile
 import time
 import unittest
 import uuid
 
-from LemonGraph import Graph, Serializer, dirlist, Query
+from LemonGraph import Graph, Serializer, dirlist, Query, cast
+from LemonGraph.httpc import RESTClient
+from LemonGraph.lg_lite import TPS
 
 node = lambda i: dict((k, Nodes[i][k]) for k in ('type', 'value'))
 edge = lambda i: dict((k, Edges[i][k]) for k in ('type', 'value', 'src', 'tgt'))
@@ -212,13 +218,13 @@ class TestGraph(unittest.TestCase):
             f = txn.fifo('foo', serialize_value=Serializer.uint())
             f.push(1, 2, 3)
             out = f.pop(4)
-            self.assertEqual(out, (1, 2, 3))
+            self.assertEqual(out, [1, 2, 3])
             self.assertTrue(f.empty)
             f.push(4, 5, 6)
             self.assertFalse(f.empty)
             self.assertEqual(len(f), 3)
             out = f.pop(4)
-            self.assertEqual(out, (4, 5, 6))
+            self.assertEqual(out, [4, 5, 6])
             self.assertEqual(len(f), 0)
 
     def test_pqueue(self):
@@ -382,6 +388,30 @@ class TestAlgorithms(unittest.TestCase):
 
 
 class TestSerializers(unittest.TestCase):
+    uic = {
+        0:                  b"\x00",
+        1:                  b"\x01",
+        0x7f:               b"\x7f",
+        0x80:               b"\x80\x80",
+        0x3fff:             b"\xbf\xff",
+        0x4000:             b"\xc0\x40\x00",
+        0x1fffff:           b"\xdf\xff\xff",
+        0x200000:           b"\xe0\x20\x00\x00",
+        0xfffffff:          b"\xef\xff\xff\xff",
+        0x10000000:         b"\xf0\x10\x00\x00\x00",
+        0x7ffffffff:        b"\xf7\xff\xff\xff\xff",
+        0x800000000:        b"\xf8\x08\x00\x00\x00\x00",
+        0x3ffffffffff:      b"\xfb\xff\xff\xff\xff\xff",
+        0x40000000000:      b"\xfc\x04\x00\x00\x00\x00\x00",
+        0x1ffffffffffff:    b"\xfd\xff\xff\xff\xff\xff\xff",
+        0x2000000000000:    b"\xfe\x02\x00\x00\x00\x00\x00\x00",
+        0xffffffffffffff:   b"\xfe\xff\xff\xff\xff\xff\xff\xff",
+        0x100000000000000:  b"\xff\x01\x00\x00\x00\x00\x00\x00\x00",
+        0x7fffffffffffffff: b"\xff\x7f\xff\xff\xff\xff\xff\xff\xff",
+        0x8000000000000000: b"\xff\x80\x00\x00\x00\x00\x00\x00\x00",
+        0xffffffffffffffff: b"\xff\xff\xff\xff\xff\xff\xff\xff\xff",
+    }
+
     def test_default(self):
         s = Serializer()
         a = (None, 'foo', 1)
@@ -393,45 +423,37 @@ class TestSerializers(unittest.TestCase):
 
     def test_uint(self):
         s = Serializer.uint()
-        a = (0, 255, 256, (1 << 64) - 1)
-        b = (b"\x00", b"\x01\xff",
-             b"\x02\x01\x00", b"\x08\xff\xff\xff\xff\xff\xff\xff\xff")
-        c = (0, 255, 256, (1 << 64) - 1)
-        for x, y, z in zip(a, b, c):
+        a = tuple(self.uic.keys())
+        b = tuple(self.uic.values())
+        for x, y in self.uic.items():
             self.assertEqual(s.encode(x), y)
-            self.assertEqual(s.decode(y), z)
+            self.assertEqual(s.decode(y), x);
 
     def test_uints(self):
-        s = Serializer.uints(2)
-        a = ((0, 255), (256, (1 << 64) - 1))
-        b = (b"\x00\x01\xff",
-             b"\x02\x01\x00\x08\xff\xff\xff\xff\xff\xff\xff\xff")
-        c = ((0, 255), (256, (1 << 64) - 1))
-        for x, y, z in zip(a, b, c):
-            self.assertEqual(s.encode(x), y)
-            self.assertEqual(s.decode(y), z)
+        s = Serializer.uints(len(self.uic))
+        a = tuple(self.uic.keys())
+        b = b''.join(self.uic.values())
+        self.assertEqual(s.encode(a), b)
+        self.assertEqual(s.decode(b), a)
 
     def test_uints_string(self):
         s = Serializer.uints(3, string=True)
-        a = ((0, 255, "foo"), (256, (1 << 64) - 1, ""))
-        b = (b"\x00\x01\xff\x01\x03foo",
-             b"\x02\x01\x00\x08\xff\xff\xff\xff\xff\xff\xff\xff\x00")
-        c = ((0, 255, "foo"), (256, (1 << 64) - 1, ""))
-        for x, y, z in zip(a, b, c):
+        a = ((0, 0x7f, "foo"), (0x80, 0x3fff, ""))
+        b = (b"\x00\x7f\x03foo", b"\x80\x80\xbf\xff\x00")
+        for x, y in zip(a, b):
             self.assertEqual(s.encode(x), y)
-            self.assertEqual(s.decode(y), z)
+            self.assertEqual(s.decode(y), x)
 
     def test_vuints(self):
         s = Serializer.vuints()
-        a = ((0, 255), (256, (1 << 64) - 1), (1,))
-        b = (b"\x00\x01\xff",
-             b"\x02\x01\x00\x08\xff\xff\xff\xff\xff\xff\xff\xff",
-             b"\x01\x01",
+        a = ((0, 0x7f), (0x80, 0x3fff, 0x1fffff), (0xffffffffffffffff,))
+        b = (b"\x00\x7f",
+             b"\x80\x80\xbf\xff\xdf\xff\xff",
+             b"\xff\xff\xff\xff\xff\xff\xff\xff\xff",
              )
-        c = ((0, 255), (256, (1 << 64) - 1), (1,))
-        for x, y, z in zip(a, b, c):
+        for x, y in zip(a, b):
             self.assertEqual(s.encode(x), y)
-            self.assertEqual(s.decode(y), z)
+            self.assertEqual(s.decode(y), x)
 
     def test_uints2d(self):
         s = Serializer.uints2d()
@@ -454,9 +476,8 @@ class TestSerializers(unittest.TestCase):
         s = Serializer.uuid()
         u = uuid.uuid1()
         u_str = str(u)
-        u_bin = u.bytes
+        u_bin = s.encode(u_str)
         self.assertEqual(u_str, s.decode(u_bin))
-        self.assertEqual(s.encode(u_str), u_bin)
 
 class TestDL(unittest.TestCase):
     def test_dirlist(self):
@@ -493,6 +514,231 @@ class TestQL(unittest.TestCase):
                     results[p] = [i]
         self.assertEqual(self.matches, results)
 
+class TestCast(unittest.TestCase):
+    ints = (
+        (1, 1),
+        ("1", 1),
+        (u"1", 1),
+    )
+    flts = (
+        (1.0, 1.0),
+        (u"1.0", 1.0),
+    )
+    def test_cast(self):
+        for a, b in self.ints:
+            self.assertEqual(cast.uint(a), b)
+        for a, b in self.flts:
+            self.assertEqual(cast.unum(a), b)
+
+# for standing up a private LG server on a temporary unix domain socket
+class LocalServer(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.server = pid = os.fork()
+        self.sockpath = os.path.join(self.dir, 'socket')
+        if pid == 0:
+            try:
+                os.chdir(self.dir)
+                sys.argv[1:] = '-s -i socket -l warning -w 1 data'.split()
+                import LemonGraph.server.__main__
+            finally:
+                os._exit(0)
+
+        for i in range(0, 300, 5):
+            if os.path.exists(self.sockpath):
+                return self.connect()
+            time.sleep(0.05)
+        raise FileNotFoundError(self.sockpath)
+
+    def connect(self):
+        self.client = RESTClient(sockpath=self.sockpath)
+
+    def tearDown(self):
+        os.kill(self.server, signal.SIGTERM)
+        self.client.close()
+        pid, status = os.waitpid(self.server, 0)
+        self.assertEqual(status, 0)
+        shutil.rmtree(self.dir)
+
+class Test_Endpoints(LocalServer):
+    def test_lg_lite(self):
+        # fancy adapter decorator
+        def adapter(**params):
+            def decorator(func):
+                def wrapper(data):
+                    # message looks like:
+                    #   [ <task>, <record0>, ... <recordN> ]
+                    # go ahead and split that up
+                    it = iter(data)
+                    task = next(it)
+                    if task['retries']:
+                        # log retry count for retried tasks
+                        sys.stderr.write('[%d]' % task['retries'])
+                        sys.stderr.flush()
+                    return func(task, it)
+                # bolt on adapter name and parameters
+                setattr(wrapper, 'adapter', func.__name__.upper())
+                setattr(wrapper, 'params', params)
+                return wrapper
+            return decorator
+
+        # add 'foo' property to each node
+        @adapter(query='n()')
+        def foo(task, records):
+            nodes = []
+            for n, in records:
+                nodes.append({ 'ID': n['ID'], 'foo': True })
+            return { 'nodes': nodes }
+
+        # create/attach 'bar' node to nodes with 'foo' property
+        # only for depths [0,2]
+        @adapter(query='n(foo)', filter='1(depth<3)')
+        def bar(task, records):
+            chains = []
+            for n, in records:
+                for i in 1,2,3:
+                    chain = [
+                        { 'ID': n['ID'] },
+                        { 'type': '%s_%s' % (n['type'], 'bar') },
+                        { 'type': 'bar', 'value': 'bar%d' % random.randint(0,99999) },
+                    ]
+                    chains.append(chain)
+            return { 'chains': chains }
+
+        # add some extra edges to existing nodes
+        @adapter(query='n()->e()->n()')
+        def baz(task, records):
+            chains = []
+            for n1, e, n2 in records:
+                if random.random() < 0.2:
+                    chains.append([
+                        { 'ID': n2['ID'] },
+                        { 'type': 'baz' },
+                        { 'ID': n1['ID'] },
+                    ])
+                if random.random() < .1:
+                    chains.append([
+                        { 'ID': n1['ID'] },
+                        { 'type': 'baz', 'value': '%.2f' % random.random() },
+                        { 'ID': n1['ID'] },
+                    ])
+            return { 'chains': chains }
+
+        adapters = { f.adapter:f for f in locals().values() if hasattr(f, 'adapter') }
+        configs = { f.adapter:f.params for f in adapters.values() }
+
+        job = {
+            # adapter configuration
+            'adapters': configs,
+
+            # mark data as 'seed' data so that nodes get assigned depth = 0
+            'seed': True,
+
+            'nodes':[
+                { 'type': 'foo', 'value': '0' },
+                { 'type': 'foo', 'value': '1' },
+                { 'type': 'foo', 'value': '2' },
+                { 'type': 'foo', 'value': '3' },
+                { 'type': 'foo', 'value': '4' },
+                { 'type': 'foo', 'value': '5' },
+                { 'type': 'foo', 'value': '6' },
+                { 'type': 'foo', 'value': '7' },
+                { 'type': 'foo', 'value': '8' },
+                { 'type': 'foo', 'value': '9' },
+            ],
+        }
+
+        client = self.client
+
+        code, headers, data = client.post('/graph', json=job)
+        jobID = data['id']
+
+        code, headers, work = client.get('/lg')
+        self.assertEqual(code, 200)
+        progress = True
+        while work:
+            if progress is False:
+                # wait until next tick before polling again
+                now = time.time() * TPS
+                time.sleep((1 - now + int(now)) / TPS)
+            progress = False
+            for adapter in work.keys():
+                # try to pull task for adapter - set short timeout so lost tasks get replayed sooner
+                code, headers, data = client.get('/lg/adapter/%s' % adapter, params=dict(timeout=0.5))
+                if code == 204:
+                    continue
+                self.assertEqual(code, 200)
+                task = str(headers['location'])
+
+                # log receipt of a new task
+                sys.stderr.write('+')
+                sys.stderr.flush()
+
+                try:
+                    r = random.random()
+                    if r < .20:
+                        # simulate 20% random failure
+                        raise Exception("fake error")
+                    elif r < .40:
+                        # simulate and log 20% random loss
+                        sys.stderr.write('?')
+                        sys.stderr.flush()
+                        continue
+                    # run adapter handler function
+                    result = adapters[adapter](data)
+                    if result is None:
+                        result = {}
+                    elif not isinstance(result, dict):
+                        raise ValueError(result)
+                    progress = True
+                except Exception as e:
+                    # log task exception
+                    sys.stderr.write('!')
+                    sys.stderr.flush()
+                    result = {
+                        'state': 'error',
+                        'details': str(e),
+                    }
+
+                # post result
+                code, headers, _ = client.post(task, json=result)
+                self.assertTrue(code in (200, 204))
+
+                # mark any errored tasks for immediate retry
+                code, headers, retry = client.post('/lg/task/%s' % jobID, json={
+                    'state': 'error',
+                    'update': {
+                        'state': 'retry',
+                    },
+                })
+                self.assertEqual(code, 200)
+            code, headers, work = client.get('/lg')
+            self.assertEqual(code, 200)
+
+        # ensure all tasks are marked as done
+        code, headers, tasks = client.get('/lg/task/%s' % jobID)
+        self.assertEqual(code, 200)
+        self.assertEqual(sum(1 for t in tasks), sum(1 for t in tasks if t['state'] == 'done'))
+
+        # delete a single task
+        code, headers, _ = client.delete('/lg/task/%s/%s' % (jobID, tasks[0]['task']))
+
+        # bulk delete tasks
+        code, headers, tasks = client.post('/lg/task/%s' % jobID, json={
+            'state': 'done',
+            'update': {
+                'state': 'delete',
+             }
+        })
+        self.assertEqual(code, 200)
+
+        # check job graph status
+        code, headers, status = client.get('/graph/%s/status' % jobID)
+        self.assertEqual(code, 200)
+
+        # delete job graph
+        code, headers, status = client.delete('/graph/%s' % jobID)
+        self.assertEqual(code, 204)
 
 if __name__ == '__main__':
     unittest.main()

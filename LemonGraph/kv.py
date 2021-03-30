@@ -1,7 +1,5 @@
-from . import lib, ffi, wire, listify_py2
+from . import lib, ffi, wire, listify_py2, unspecified
 from .serializer import Serializer
-
-UNSPECIFIED = object()
 
 class KV(object):
     def __init__(self, txn, domain, map_data=False, map_keys=False, serialize_domain=Serializer(), serialize_key=Serializer(), serialize_value=Serializer()):
@@ -46,22 +44,22 @@ class KV(object):
         data = lib.kv_get(self._kv, key, len(key), self._dlen)
         return False if data == ffi.NULL else True
 
-    def get(self, key, default=UNSPECIFIED):
+    def get(self, key, default=unspecified):
         try:
             return self[key]
         except KeyError:
-            if default is UNSPECIFIED:
+            if default is unspecified:
                 raise
             return default
 
-    def pop(self, key, default=UNSPECIFIED):
+    def pop(self, key, default=unspecified):
         try:
             try:
                 return self[key]
             finally:
                 del self[key]
         except KeyError:
-            if default is UNSPECIFIED:
+            if default is unspecified:
                 raise
             return default
 

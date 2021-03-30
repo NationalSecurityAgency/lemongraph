@@ -1,206 +1,259 @@
-from __future__ import print_function
-
 from lazy import lazy
-from six import iteritems, string_types
+import logging
+from six import iteritems
 from time import time
+from weakref import WeakValueDictionary
 
-from . import wire, lib, ffi
-from .MatchLGQL import MatchLGQL
+from .wire import encode, decode
 from .serializer import Serializer
 from .uuidgen import uuidgen
+from . import unspecified, lib, ffi
+from .MatchLGQL import MatchLGQL, QueryCannotMatch, QuerySyntaxError
+from .stringmap import StringMap
+from . import cast
 
-msgpack = Serializer.msgpack()
-vuints = Serializer.vuints(decode_type=list)
-uint = Serializer.uint()
-uints2d = Serializer.uints2d()
+log = logging.getLogger(__name__)
+log.addHandler(logging.NullHandler())
+
 null = Serializer.null()
+uuid = Serializer.uuid()
+uint = Serializer.uint()
+vuints = Serializer.vuints(decode_type=list)
+uints2d = Serializer.uints2d()
+msgpack = Serializer.msgpack()
 
-string_or_none = string_types + (type(None),)
+def efilter(iterable, exceptions, cb):
+    for x in iterable:
+        try:
+            yield cb(x)
+        except exceptions:
+            pass
 
-def as_uint(x):
-    ret = int(x)
-    if ret < 0:
-        raise ValueError(x)
-    return ret
+TPS = 10
+def to_ticks(ts=None, inv=1.0/TPS):
+    if ts is None:
+        ts = time() + inv
+    if ts < 0:
+        raise ValueError(ts)
+    return int(ts * TPS)
+
+def from_ticks(val, inv=1.0/TPS):
+    return val * inv
+
+ENABLE = 1
+AUTOTASK = 2
+DEFAULT_FLAGS = ENABLE|AUTOTASK
 
 class LG_Lite(object):
     def __init__(self, txn):
         self.txn = txn
+        self._flows = WeakValueDictionary()
+        self._tasks = WeakValueDictionary()
 
-    @lazy # holds current query for each adapter
-    def adapterdb(self):
-        return self.txn.kv('lg_lite.adapters', map_keys=True, map_data=True)
+    def flow(self, flowID=None, **kwargs):
+        if flowID:
+            # cache all flow objects
+            try:
+                flow = self._flows[flowID]
+            except KeyError:
+                flow = self._flows[flowID] = Flow(self, flowID=flowID)
+            return flow
+        return Flow.Get(self, **kwargs)
 
-    def update_adapters(self, data):
-        if not isinstance(data, dict):
-            raise ValueError
-        for name, config in iteritems(data):
-            self.update_adapter(name, config)
+    def flows(self, **kwargs):
+        return Flow.Find(self, **kwargs)
 
-    def update_adapter(self, name, data):
-        if isinstance(data, dict):
-            return self._update_flows(name, [data], primary=True)
-        if isinstance(data, (list, tuple)):
-            return self._update_flows(name, data)
-        raise ValueError
+    def task(self, uuid=None, **kwargs):
+        if uuid:
+            # cache all task objects
+            try:
+                task = self._tasks[uuid]
+            except KeyError:
+                task = self._tasks[uuid] = Task(self, uuid=uuid, **kwargs)
+            return task
+        # pluck out flow identification
+        adapter = kwargs.pop('adapter')
+        query = kwargs.pop('query', None)
+        with self.flow(adapter=adapter, query=query) as flow:
+            # and find/create task as specified
+            return flow.task(**kwargs)
 
-    def _update_flows(self, name, configs, primary=False):
-        adapter = self.adapter(name)
-        for config in configs:
-            if primary:
-                query = config.pop('query', None) or self.adapterdb[name]
-            else:
-                query = config.pop('query')
-            with adapter.flow(query=query, create=True) as flow:
-                default = flow
-                disable = None
-                if primary:
-                    try:
-                        if self.adapterdb[name] != query:
-                            default = disable = adapter.flow()
-                    except KeyError:
-                        self.adapterdb[name] = query
-                flow.pos      = config.pop('pos',      default.pos)
-                flow.enabled  = config.pop('enabled',  default.enabled)
-                flow.autotask = config.pop('autotask', default.autotask)
-                flow.filter   = config.pop('filter',   default.filter)
-            if config:
-                raise ValueError
-            if disable:
-                with disable as flow:
-                    flow.autotask = False
-                self.adapterdb[name] = query
+    def tasks(self, uuids=unspecified, states=unspecified, adapters=unspecified):
+        if uuids is unspecified:
+            # default to any task
+            tasks = (self.task(uuid=u) for u in self.statusdb)
+        else:
+            tasks = (self.task(uuid=u) for u in uuids if u in self.statusdb)
 
-    def adapter(self, adapter):
-        assert(self.txn is not None)
-        return Adapter(self, adapter)
+        if states is unspecified:
+            # default to any state
+            pass
+        elif states:
+            stateIDs = set(efilter(states, KeyError, Task.states))
+            tasks = (t for t in tasks if t.stateID in stateIDs)
+        else:
+            return ()
 
-    def flow(self, adapter, **kwargs):
-        return self.adapter(adapter).flow(**kwargs)
+        if adapters is unspecified:
+            # default to any adapter
+            pass
+        elif adapters:
+            adapterIDs = set(efilter(adapters, KeyError, lambda a: self.txn.stringID(encode(a), update=False)))
+            tasks = (t for t in tasks if t.adapterID in adapterIDs)
+        else:
+            return ()
 
-    def task(self, adapter, **kwargs):
-        return self.adapter(adapter).task(**kwargs)
+        return tasks
 
-    def inject(self, adapter, **kwargs):
-        return self.adapter(adapter).inject(**kwargs)
-
-    def adapters(self):
-        assert(self.txn is not None)
-        try:
-            adapterdb = self.adapterdb
-        except KeyError:
-            return
-        for adapter in adapterdb.iterkeys():
-            yield self.adapter(adapter)
-
-    # return all defined flows
-    def flows(self, adapter=None, **kwargs):
-        assert(self.txn is not None)
-        adapters = self.adapters() if adapter is None else (Adapter(self, adapter),)
-        for adapter in adapters:
-            for flow in adapter.flows(**kwargs):
-                yield flow
+    def inject(self, adapter=None, query=None, filter=None):
+        with self.flow(adapter=adapter, query=query) as flow:
+            return flow.inject(filter=filter)
 
     def ffwd(self, start=None):
         flows = self.flows(active=True)
         if start is None:
-            flows = (f for f in flows if f._pos < self.txn.nextID)
+            flows = (f for f in flows if f.pos < self.txn.nextID)
         else:
-            flows = (f for f in flows if f._pos == start)
+            flows = (f for f in flows if f.pos == start)
         for f in flows:
             with f as flow:
                 flow.ffwd()
 
+    def update_adapters(self, configs):
+        try:
+            items = iteritems(configs)
+        except AttributeError:
+            raise ValueError
+        for adapter, config in items:
+            self.update_adapter(adapter, config)
 
-class Adapter(object):
+    def update_adapter(self, adapter, data):
+        try:
+            # try it as a dictionary-ish object first
+            return self._update_flow(adapter=adapter, primary=True, **data)
+        except TypeError:
+            raise
 
-    def __init__(self, lg, adapter):
-        self.lg = lg
-        self.txn = lg.txn
-        assert(self.txn is not None)
-        self.adapter = adapter
+        # else try as a list of dictionary-ish objects
+        for config in data:
+            self._update_flow(adapter=adapter, **config)
 
-    def flow(self, query=None, **kwargs):
-        if query is None:
-            query = self.adapterdb[self.adapter]
-        return Flow(self, query, **kwargs)
-
-    def flows(self, active=None):
-        flows = (Flow(self, query) for query in self.flowdb)
-        if active:
-            flows = (flow for flow in flows if flow.active)
-        return flows
-
-    def inject(self, query=None, **kwargs):
-        with self.flow(query=query) as flow:
-            return flow.inject(**kwargs)
-
-    # find/generate a task from active flows
-    # raises KeyError or IndexError
-    def task(self, query=None, **kwargs):
-        if query is not None:
-            with self.flow(query) as flow:
+    def _update_flow(self, adapter=None, query=unspecified, filter=unspecified, pos=unspecified, enabled=unspecified, autotask=unspecified, limit=unspecified, timeout=unspecified, primary=False):
+        if query is unspecified:
+            if primary:
+                raise ValueError("<query> param must be supplied if setting as primary")
+            flow = prev = self.flow(adapter=adapter)
+        else:
+            flow = prev = self.flow(adapter=adapter, query=query, create=True)
+            # check if there is a previous primary to clone unspecified default values from
+            if primary:
                 try:
-                    return flow.task(**kwargs)
-                except IndexError:
+                    prev = self.flow(adapter=adapter)
+                except KeyError:
                     pass
-            raise IndexError
+                flow.primary = True
+        with flow:
+            # set unspecified defaults from self or previous primary
+            flow.pos      = prev.pos      if pos      is unspecified else pos
+            flow.filter   = prev.filter   if filter   is unspecified else filter
+            flow.enabled  = prev.enabled  if enabled  is unspecified else enabled
+            flow.autotask = prev.autotask if autotask is unspecified else autotask
+            flow.limit    = prev.limit    if limit    is unspecified else limit
+            flow.timeout  = prev.timeout  if timeout  is unspecified else timeout
+            if flow is not prev:
+                # disable autotasking on previous primary
+                with prev:
+                    prev.autotask = False
 
-        seen = set()
-        query = self.flowdb.next_key()
-        while query not in seen:
-            with self.flow(query) as flow:
-                try:
-                    return flow.task(**kwargs)
-                except (KeyError, IndexError):
-                    pass
-            seen.add(query)
-            query = self.flowdb.next_key()
-        raise IndexError
+    @lazy # flowID => [adapterID, queryID, chain length, flags, log position, active task count]
+    def flowdb(self): # as well as (0, adapterID, queryID) => flowID
+        return self.txn.kv('lg_lite.flow', serialize_key=null, serialize_value=null)
+#        return self.txn.kv('lg_lite.flow', serialize_key=null, serialize_value=vuints)
 
-    @lazy
-    def adapterdb(self):
-        return self.lg.adapterdb
-
-    @lazy # holds [flags, pos, task_count, queue_length] for each adapter query
-    def flowdb(self):
-        return self.txn.kv('lg_lite.flows.%s' % self.adapter, map_keys=True, serialize_value=vuints)
-
-    @lazy # holds autotask-ing filter for each adapter query
+    @lazy # flowID => query filter
     def filterdb(self):
-        return self.txn.kv('lg_lite.filters.%s' % self.adapter, map_keys=True, map_data=True)
+        return self.txn.kv('lg_lite.filter', map_data=True)
 
+    @lazy # adapterID => primary flowID
+    def primarydb(self):
+        return self.txn.kv('lg_lite.primary', serialize_key=uint, serialize_value=null)
 
-ENABLE = 1
-AUTOTASK = 2
+    @lazy # task => [<records>]
+    def recorddb(self):
+        return self.txn.kv('lg_lite.records', serialize_key=uuid, serialize_value=uints2d)
+
+    @lazy # task => [flowID, retries, <active|done|error|split>, timestamp]
+    def statusdb(self):
+        return self.txn.kv('lg_lite.status', serialize_key=uuid, serialize_value=vuints)
+
+    @lazy # [flowID, timestamp, uuid]
+    def retrydb(self):
+        return self.txn.sset('lg_lite.retry', serialize_value=null)
+
+    @lazy # task => message
+    def detaildb(self):
+        return self.txn.kv('lg_lite.details', serialize_key=uuid, serialize_value=msgpack)
+
 
 class Flow(object):
-    def __init__(self, adapter, query, create=False):
-        if not isinstance(query, string_types):
-            raise ValueError
-        self.update = False
-        self.txn = adapter.txn
-        self.adapter = adapter
-        self.query = query
-        # adapter name + query base
-        self.aqb = (adapter.adapter, query)
-        self.refs = 0
+    @staticmethod
+    def Find(lg, adapter=None, active=None):
         try:
-            self._flags, self._pos, self._tasks, _qlen = adapter.flowdb[self.query]
+            flowdb = lg.flowdb
+        except KeyError:
+            return
+        pfx = (0, lg.txn.stringID(encode(adapter), update=False)) if adapter else (0,)
+        # crawl or filter secondary index to get primary key
+        for pkey in flowdb.itervalues(pfx=vuints.encode(pfx)):
+            flow = lg.flow(flowID=uint.decode(pkey))
+            if active is None or flow.active is active:
+                yield flow
+
+    @staticmethod
+    def Get(lg, adapter=None, query=None, create=False):
+        adapterID = lg.txn.stringID(encode(adapter), update=create)
+        # if query is unspecified, look up default adapter flow
+        if query is None:
+            return lg.flow(flowID=uint.decode(lg.primarydb[adapterID]))
+
+        # next attempt look up by secondary index - adapterID/queryID
+        queryID = lg.txn.stringID(encode(query), update=create)
+        ikey = vuints.encode((0, adapterID, queryID))
+        try:
+            return lg.flow(flowID=uint.decode(lg.flowdb[ikey]))
         except KeyError:
             if not create:
                 raise
-            MatchLGQL(query)
-            # set up defaults
-            self._tasks = 0
-            self._flags = AUTOTASK|ENABLE
-            # default pos to current nextID for new flows
-            self.pos = 0
-            self.update = True
+
+        # flow is new - check query validity and save chain length
+        m = MatchLGQL(query)
+        chain_len = len(m.keep)
+
+        # init data - remaining fields are: log position, active task count, default limit, and default timeout
+        data = [adapterID, queryID, chain_len, DEFAULT_FLAGS, 0, 0, 200, to_ticks(60)]
+
+        try: # grab, increment, and stash last flowID
+            flowID = 1 + uint.decode(lg.flowdb[b''])
+        except KeyError:
+            flowID = 1
+
+        # update bookmark, add index, and set primary key
+        pkey = lg.flowdb[b''] = lg.flowdb[ikey] = uint.encode(flowID)
+        lg.flowdb[pkey] = vuints.encode(data)
+        return lg.flow(flowID=flowID)
+
+    def __init__(self, lg, flowID=None):
+        self.lg = lg
+        self.txn = txn = lg.txn
+        self.update = False
+        self.refs = 0
+        self._flowID = cast.uint(flowID)
+        self._pkey = uint.encode(self._flowID)
+        self._data = vuints.decode(lg.flowdb[self._pkey])
 
     def __del__(self):
         if self.update:
-            raise RuntimeError
+            raise RuntimeError("Flow() object updates should always be done via contexts!")
 
     def __enter__(self):
         self.refs += 1
@@ -209,47 +262,90 @@ class Flow(object):
     def __exit__(self, type, value, traceback):
         self.refs -= 1
         if self.update and not self.refs:
-            self.adapter.flowdb[self.query] = self._flags, self._pos, self._tasks, self.qlen
+            self.lg.flowdb[self._pkey] = vuints.encode(self._data)
             self.update = False
 
     @lazy
     def queue(self):
-        return self.txn.fifo('lg_lite.queue.%s.%s' % self.aqb, serialize_value=vuints)
-
-    @lazy
-    def taskdb(self):
-        return self.txn.kv('lg_lite.tasks.%s.%s' % self.aqb, serialize_value=uints2d)
-
-    @lazy # map task uuid to timestamp
-    def ts(self):
-        return self.txn.kv('lg_lite.ts.%s.%s' % self.aqb, serialize_key=null, serialize_value=null)
-
-    @lazy # enc(timestamp) + task uuid
-    def ts_idx(self):
-        return self.txn.sset('lg_lite.ts_idx.%s.%s' % self.aqb, serialize_value=null)
+        return self.txn.fifo('lg_lite.queue.%d' % self._flowID, serialize_value=vuints)
 
     @property
     def filter(self):
-        return self.adapter.filterdb.get(self.query, None)
+        try:
+            return self.lg.filterdb[self._pkey]
+        except KeyError:
+            pass
 
     @filter.setter
     def filter(self, filter):
         if filter is None:
-            self.adapter.filterdb.pop(self.query, None)
+            self.lg.filterdb.pop(self._pkey, None)
         else:
+            # ensure filter is valid for query
             MatchLGQL(self.query + ',' + filter)
-            self.adapter.filterdb[self.query] = filter
+            self.lg.filterdb[self._pkey] = filter
 
     @property
-    def qfull(self):
+    def query_full(self):
         try:
             return self.query + ',' + self.filter
         except TypeError:
             return self.query
 
     @property
+    def flowID(self):
+        return self._flowID
+
+    @property
+    def adapterID(self):
+        return self._data[0]
+
+    @property
+    def queryID(self):
+        return self._data[1]
+
+    @property
+    def chain_len(self):
+        return self._data[2]
+
+    @property
+    def _flags(self):
+        return self._data[3]
+
+    @_flags.setter
+    def _flags(self, flags):
+        flags = cast.uint(flags)
+        if self._data[3] != flags:
+            self._data[3] = flags
+            self.update = True
+
+    flags = _flags
+
+    @property
+    def enabled(self):
+        return bool(self.flags & ENABLE)
+
+    @enabled.setter
+    def enabled(self, x):
+        if x:
+            self._flags |= ENABLE
+        else:
+            self._flags &= ~ENABLE
+
+    @property
+    def autotask(self):
+        return bool(self.flags & AUTOTASK)
+
+    @autotask.setter
+    def autotask(self, x):
+        if x:
+            self._flags |= AUTOTASK
+        else:
+            self._flags &= ~AUTOTASK
+
+    @property
     def pos(self):
-        return self._pos
+        return self._data[4]
 
     # set pos=1 to make flow start at beginning of job
     #   pos > 0: absolute
@@ -263,140 +359,75 @@ class Flow(object):
                 p = 1
         elif p > self.txn.nextID:
             p = self.txn.nextID
-        self._pos = p
+        self._data[4] = p
         self.update = True
+
+    @property
+    def primary(self):
+        return self.lg.primarydb.get(self.adapterID, None) == self._pkey
+
+    @primary.setter
+    def primary(self, val):
+        if val:
+            self.lg.primarydb[self.adapterID] = self._pkey
+        else:
+            self.lg.primarydb.pop(self.adapterID, None)
+
+    @property
+    def _active_count(self):
+        return self._data[5]
+    active_count = _active_count
+
+    @_active_count.setter
+    def _active_count(self, n):
+        n = cast.uint(n)
+        if self._data[5] != n:
+            self._data[5] = n
+            self.update = True
 
     @property
     def qlen(self):
         return len(self.queue)
 
     @property
-    def tasks(self):
-        return self._tasks
+    def limit(self):
+        return self._data[6]
 
-    @tasks.setter
-    def tasks(self, x):
-        self._tasks = x
-        self.update = True
-
-    @property
-    def active(self):
-        return self.txn.enabled and self.enabled and (self.tasks > 0 or self.qlen > 0 or (self.pos < self.txn.nextID and self.autotask))
-
-    @property
-    def flags(self):
-        return self._flags
-
-    @flags.setter
-    def flags(self, flags):
-        flags = int(flags)
-        if self._flags != flags:
-            self._flags = flags
+    @limit.setter
+    def limit(self, n):
+        n = cast.uint(n) or 200
+        if self._data[6] != n:
+            self._data[6] = n
             self.update = True
 
     @property
-    def enabled(self):
-        return bool(self._flags & ENABLE)
+    def timeout(self):
+        return from_ticks(self._data[7])
 
-    @enabled.setter
-    def enabled(self, x):
-        if x:
-            self.flags |= ENABLE
-        else:
-            self.flags &= ~ENABLE
-
-    @property
-    def autotask(self):
-        return bool(self.flags & AUTOTASK)
-
-    @autotask.setter
-    def autotask(self, x):
-        if x:
-            self.flags |= AUTOTASK
-        else:
-            self.flags &= ~AUTOTASK
-
-    def _find_task(self, min_age, blacklist):
-        max_ts = time() - as_uint(min_age)
-        ts = ffi.new('uint64_t[]', 1)
-        for enc in self.ts_idx:
-            pfxlen = lib.unpack_uints(1, ts, enc)
-            if ts[0] > max_ts:
-                break
-            uuid = wire.decode(enc[pfxlen:])
-            if uuid not in blacklist:
-                return Task(self, uuid=uuid)
-        raise IndexError
+    @timeout.setter
+    def timeout(self, n):
+        n = cast.unum(n)
+        n = to_ticks(n)
+        if self._data[7] != n:
+            self._data[7] = n
+            self.update = True
 
     def ffwd(self):
-        pos = self._pos
+        pos = self.pos
         def scanner(entry):
             pos = entry.ID
-
-        for chain in self.txn.query(self.qfull, start=pos, scanner=scanner, snap=True):
+        for chain in self.txn.query(self.query_full, start=pos, scanner=scanner, snap=True):
             self.pos = pos
             return
         self.pos = self.txn.nextID
 
-    def _create_task(self, limit, default_limit=200):
-        try:
-            limit = int(limit)
-            if limit < 1:
-                limit = default_limit
-        except ValueError:
-            limit = default_limit
+    @property
+    def adapter(self):
+        return decode(self.txn.string(self.adapterID))
 
-        # pull from queue first
-        records = self.queue.pop(limit)
-        more = limit - len(records)
-        if more and self.autotask and self._pos < self.txn.nextID:
-            records = list(records)
-
-            full = False
-            rec = [self._pos - 1]
-            def scanner(entry):
-                if not full:
-                    rec[0] = entry.ID
-                return full
-
-            for chain in self.txn.query(self.qfull, start=self._pos, scanner=scanner, snap=True):
-                rec[1::] = tuple(x.ID for x in chain)
-                if full:
-                    self.queue.push(rec)
-                else:
-                    records.append(tuple(rec))
-                    if len(records) == limit:
-                        full = True
-
-            records = tuple(records)
-
-            # holds the logID for the last entry that we processed, stash nextID
-            self.pos = rec[0] + 1
-
-        if not records:
-            raise IndexError
-
-        self.update = True
-
-        return Task(self, records=records)
-
-    # fetch/create task
-    def task(self, uuid=None, limit=200, min_age=60, blacklist=()):
-        if uuid is not None:
-            # if specified, ignore other args and fetch task by uuid
-            # raises KeyError if does not exist
-            return Task(self, uuid=uuid)
-
-        if not self.txn.enabled:
-            raise IndexError
-
-        # grab oldest existing non-blacklisted task older than min_age seconds
-        # failing that, pull from queue
-        # raises IndexError if no tasks could be found/created
-        try:
-            return self._find_task(min_age, blacklist)
-        except IndexError:
-            return self._create_task(limit)
+    @property
+    def query(self):
+        return decode(self.txn.string(self.queryID))
 
     # manually fill queue
     def inject(self, filter=None):
@@ -406,7 +437,7 @@ class Flow(object):
         count = 0
         rec = [self.txn.nextID]
         for chain in self.txn.query(query):
-            rec[1::] = tuple(x.ID for x in chain)
+            rec[1:] = (x.ID for x in chain)
             self.queue.push(rec)
             count += 1
 
@@ -415,66 +446,278 @@ class Flow(object):
 
         return count
 
+    def task(self, uuid=None, **kwargs):
+        # always allow fetch by uuid
+        if uuid:
+            t = self.lg.task(self, uuid=uuid, **kwargs)
+            # ensure task actually belongs to this flow
+            if t.flowID != self.flowID:
+                raise KeyError
+
+        # fetch by other criteria if job is enabled
+        if self.txn.enabled:
+            return self._get_task(**kwargs)
+        raise IndexError
+
+    @property
+    def active(self):
+        return self.txn.enabled and self.enabled and (self._has_retries or self.qlen > 0 or (self.pos < self.txn.nextID and self.autotask))
+
+    @property
+    def _has_retries(self):
+        for enc in self.lg.retrydb.iterpfx(pfx=self._pkey):
+            return True
+        return False
+
+    def _get_task(self, ignore=(), limit=unspecified, **kwargs):
+        # find oldest retry-able task or create new
+        try:
+            return Task._Find(self, ignore, **kwargs)
+        except IndexError:
+            pass
+        return Task._Create(self, limit, **kwargs)
+
+    def _get_records(self, limit):
+        # first grab up to [limit] records from the queue
+        records = self.queue.pop(limit)
+        limit -= len(records)
+
+        # unless full, resume streaming query where we left off
+        if limit and self.autotask and self.pos < self.txn.nextID:
+            rec = [self.pos - 1]
+
+            # halt query when we've reached out limit
+            def scanner(entry):
+                if limit:
+                    rec[0] = entry.ID
+                else:
+                    return True
+
+            for chain in self.txn.query(self.query_full, start=self.pos, scanner=scanner, snap=True):
+                rec[1:] = (x.ID for x in chain)
+                if limit:
+                    # clone record - it will get reused
+                    records.append(tuple(rec))
+                    limit -= 1
+                else:
+                    # send any overflow into the records queue for later
+                    self.queue.push(rec)
+
+            # holds the logID for the last entry that we processed, stash nextID
+            self.pos = rec[0] + 1
+
+        if records:
+            return records
+        raise IndexError
+
+
+
 class Task(object):
-    def __init__(self, flow, uuid=None, records=None):
-        if not flow.refs:
-            raise RuntimeError
+    states = StringMap(['active', 'done', 'error', 'deleted'])
+    _ts = ffi.new('uint64_t[]', 1)
 
-        self.flow = flow
-        self.txn = flow.txn
-        self._records = records
+    @classmethod
+    def _Retries(cls, flow, ts=None):
+        # first part of retrydb enc val is flow pkey
+        encs = flow.lg.retrydb.iterpfx(pfx=flow._pkey)
+        flen = len(flow._pkey)
+        try:
+            enc = next(encs)
+            ts = to_ticks(ts)
+            while True:
+                # second part is timestamp
+                tlen = lib.unpack_uints(1, cls._ts, enc[flen:])
+                if cls._ts[0] > ts:
+                    raise StopIteration
+                # third and final part is task uuid
+                yield uuid.decode(enc[flen + tlen:])
+                enc = next(encs)
+        except StopIteration:
+            pass
 
-        if bool(uuid) is bool(records):
-            raise RuntimeError
+    @classmethod
+    def _Find(cls, flow, ignore, timeout=unspecified):
+        for u in cls._Retries(flow):
+            if u not in ignore:
+                return flow.lg.task(uuid=u, retry=True, timeout=flow.timeout if timeout is unspecified else timeout)
+        raise IndexError
 
-        if uuid is None:
-            self.uuid = uuid = uuidgen()
-            self.touch()
-            flow.taskdb[uuid] = records
-            with self.flow as flow:
-                flow.tasks += 1
-        else:
-            self.uuid = uuid
-            # ensure it exists
-            self.timestamp
+    @classmethod
+    def _Create(cls, flow, limit, timeout=unspecified):
+        if limit is unspecified:
+            limit = flow.limit
+        try:
+            limit = cast.uint(limit) or flow.limit
+        except (ValueError, KeyError):
+            limit = flow.limit
 
-    @lazy
-    def records(self):
-        if self._records is not None:
-            return self._records
-        return self.flow.taskdb[self.uuid]
+        # attempt to pull some records from the flow
+        records = flow._get_records(limit)
+
+        # find an unused uuid
+        uuid = uuidgen()
+        while uuid in flow.lg.statusdb:
+            uuid = uuidgen()
+
+        # add initial status: flowID, retries, state, timestamp, and timeout
+        flow.lg.statusdb[uuid] = (flow.flowID, 0, cls.states.error, 0, 0)
+        flow.lg.recorddb[uuid] = records
+
+        return flow.lg.task(uuid=uuid, state=cls.states.active, touch=True, timeout=flow.timeout if timeout is unspecified else timeout)
+
+    def __init__(self, lg, uuid=None, **kwargs):
+        self._status  = lg.statusdb[uuid]
+        self.uuid = uuid
+        self.txn = lg.txn
+        self.lg = lg
+        if kwargs:
+            self.update(**kwargs)
 
     def format(self):
         for rec in self.records:
-            yield tuple(self.txn.entry(x, beforeID=rec[0]+1).as_dict() for x in rec[1::])
+            it = iter(rec)
+            b4ID = next(it)
+            yield tuple(self.txn.entry(x, beforeID=b4ID).as_dict() for x in it)
 
-    def drop(self):
-        del self.flow.taskdb[self.uuid]
-        bid = wire.encode(self.uuid)
-        try:
-            ts_enc_prev = self.flow.ts.pop(bid)
-            self.flow.ts_idx.remove(ts_enc_prev + bid)
-        except KeyError:
-            pass
-        with self.flow as flow:
-            self.flow.tasks -= 1
+    @property
+    def status(self):
+        return {
+            'task':      self.uuid,
+            'adapter':   self.adapter,
+            'query':     self.query,
+            'state':     self.state,
+            'retries':   self.retries,
+            'timestamp': self.timestamp,
+            'timeout':   self.timeout,
+            'details':   self.details,
+            'length':    len(self.records),
+        }
+
+    @lazy
+    def records(self):
+        return self.lg.recorddb[self.uuid]
+
+    @lazy
+    def flow(self):
+        return self.lg.flow(self.flowID)
+
+    @property
+    def flowID(self):
+        return self._status[0]
+
+    @property
+    def retries(self):
+        return self._status[1]
+
+    @property
+    def stateID(self):
+        return self._status[2]
+
+    @property
+    def state(self):
+        return self.states[self._status[2]]
 
     @property
     def timestamp(self):
-        return uint.decode(self.flow.ts[wire.encode(self.uuid)])
+        return from_ticks(self._status[3])
 
-    @timestamp.setter
-    def timestamp(self, ts):
-        bid = wire.encode(self.uuid)
-        ts = as_uint(time() if ts is None else ts)
-        ts_enc = uint.encode(ts)
-        try:
-            ts_enc_prev = self.flow.ts[bid]
-            self.flow.ts_idx.remove(ts_enc_prev + bid)
-        except KeyError:
-            pass
-        self.flow.ts[bid] = ts_enc
-        self.flow.ts_idx.add(ts_enc + bid)
+    @property
+    def timeout(self):
+        return from_ticks(self._status[4])
 
-    def touch(self, ts=None):
-        self.timestamp = ts
+    @property
+    def adapter(self):
+        return self.flow.adapter
+
+    @property
+    def adapterID(self):
+        return self.flow.adapterID
+
+    @property
+    def query(self):
+        return self.flow.query
+
+    @property
+    def queryID(self):
+        return self.flow.queryID
+
+    @property
+    def active(self):
+        return self._status[2] == self.states.active
+
+    def update(self, touch=None, state=None, retry=None, timeout=unspecified, details=unspecified):
+        delete = False
+        if state in ('deleted', 'delete'):
+            # normalize 'delete' to 'deleted'
+            state = 'deleted'
+            # nuke details
+            details = None
+            # and flag to remove from statusdb & recorddb
+            delete = True
+        elif state == 'retry':
+            state = 'active'
+            touch = to_ticks() - 1
+            timeout = 1
+
+        # clone current status
+        _status = list(self._status)
+        if retry is not None:
+            # increment if true, else set to uint
+            _status[1] = _status[1] + retry if isinstance(retry, bool) else cast.uint(retry)
+        if state is not None:
+            # normalize string/uint to valid uint
+            _status[2] = self.states(state)
+        if touch:
+            # use current timestamp if true, else provided uint
+            _status[3] = to_ticks(None if touch is True else touch)
+        if timeout is not unspecified:
+            # set or delete task timeout
+            _status[4] = 0 if timeout is None else to_ticks(timeout)
+
+        if _status != self._status:
+            active_delta = bool(self._status[2]) - bool(_status[2])
+            rk0 = self._rkey
+            self.lg.statusdb[self.uuid] = self._status = _status
+            rk1 = self._rkey
+            if rk0 != rk1:
+                if rk0:
+                    self.lg.retrydb.pop(rk0)
+                if rk1:
+                    self.lg.retrydb.add(rk1)
+            if active_delta:
+                with self.flow as flow:
+                    flow._active_count += active_delta
+        if details is not unspecified:
+            self.details = details
+        if delete:
+            # leave's self._status and pull records once so that self.status looks nice
+            self.records
+            del self.lg.statusdb[self.uuid]
+            del self.lg.recorddb[self.uuid]
+
+    def touch(self, retry=False, details=unspecified):
+        self.update(touch=True, retry=retry, details=details)
+
+    @property
+    def details(self):
+        return self.lg.detaildb.get(self.uuid, None)
+
+    @details.setter
+    def details(self, value):
+        if value is None:
+            self.lg.detaildb.pop(self.uuid, None)
+        else:
+            self.lg.detaildb[self.uuid] = value
+
+    def drop(self):
+        # delete all traces of a task
+        self.update(state='deleted')
+
+    @lazy
+    def _bid(self):
+        return uuid.encode(self.uuid)
+
+    @property
+    def _rkey(self):
+        if self.active and self.timeout:
+            return self.flow._pkey + uint.encode(self.timestamp + self.timeout) + self._bid

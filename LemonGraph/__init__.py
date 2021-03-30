@@ -29,6 +29,7 @@ from .MatchLGQL import QueryCannotMatch, QuerySyntaxError
 from .lg_lite import LG_Lite
 from . import algorithms
 from . import wire
+from . import unspecified
 
 # these imports happen at the bottom
 '''
@@ -83,8 +84,6 @@ def merge_values(a, b):
         except TypeError:
             pass
     return b
-
-UNSPECIFIED = object()
 
 class Graph(object):
     serializers = tuple('serialize_' + x for x in ('node_type', 'node_value', 'edge_type', 'edge_value', 'property_key', 'property_value'))
@@ -614,9 +613,9 @@ class Transaction(GraphItem):
         return q.execute(self, **kwargs)
 
     # fetch numeric ID for binary buffer
-    def stringID(self, data, update=UNSPECIFIED):
+    def stringID(self, data, update=unspecified):
         # default to txn read/write setting, allow 'update' param to override
-        if update is UNSPECIFIED:
+        if update is unspecified:
             update = self.write
         ID = ffi.new('strID_t *')
         resolve = lib.graph_string_resolve if update else lib.graph_string_lookup

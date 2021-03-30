@@ -1,25 +1,36 @@
 #!/usr/bin/env python3
 
-import asyncio
 import aiohttp
 import argparse
-import time
+import asyncio
 import sys
+import time
 
 from aiohttp.client_exceptions import ClientConnectorError
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('-u', '--url', help='LemonGraph REST service base url', default='http://localhost:8000')
+parser.add_argument('-s', '--socket', help='LemonGraph REST service UNIX domain socket', default=None)
 parser.add_argument('-p', '--priority', help='job priority', type=int, default=100)
 parser.add_argument('count', help='job count', type=int, nargs='?', default=1)
 
 args = parser.parse_args()
 
+if args.socket is not None:
+    sockpath = args.socket
+    if sockpath[0] == '@':
+        sockpath[0] = '\0'
+    connector = aiohttp.UnixConnector(path=sockpath)
+else:
+    connector = None
+
 job = {
     "meta": { "priority": args.priority },
+    "seed": True,
     "adapters":{
         "FOO": { "query": "n()" },
-        "BAR": { "query": "n(foo)" }
+        "BAR": { "query": "n(foo)", "filter": "1(depth<3)" },
+        "BAZ": { "query": "n()->e()->n()" },
     },
     "nodes":[
         { "type": "foo", "value": "bar0" },
@@ -36,7 +47,7 @@ job = {
 }
 
 async def main():
-    async with aiohttp.ClientSession(headers={'x-please-pipeline': 'true'}) as session:
+    async with aiohttp.ClientSession(headers={'x-please-pipeline': 'true'}, connector=connector) as session:
         i = 0
         while i < args.count:
             # submit new job

@@ -5,14 +5,18 @@ This aims to re-implement the core functionality of LemonGrenade with fewer movi
 # Quickstart
 
 * install LG reqs
-* install python's `requests` module
 * run server:
-	* `python -mLemonGraph.server`
+	* `python -mLemonGraph.server -s`
 * run example adapters:
 	* `python examples/foo.py`
 	* `python examples/bar.py`
+	* `python examples/baz.py`
 * submit some example jobs:
 	* `python examples/submit.py 10`
+* see also:
+    * [async_adapters.py](examples/async_adapters.py)
+    * [async_submit.py](examples/async_submit.py)
+    * `test_lg_lite` in [test.py](test.py)
 
 # Design
 
@@ -20,39 +24,48 @@ LG Lite extends LemonGraph and continues its disposable-central-index theme - no
 
 ## Server
 
-* maintains individual jobs as graphs, which internally track adapter progress
+* maintains individual jobs as graphs
 * maintains indexes of which adapters potentially have outstanding work
-* responsible for round-robin-ing through adapter queries as well as jobs
+* responsible for round-robin-ing through jobs, according to job priority
+
+## Jobs
+
+Jobs themselves are created/updated/deleted via the older `/graph` endpoint, and:
+
+* can be individually enabled/disabled
+* have a priority - low: _0_, high: _255_, default: _100_
+* track task status across all adapters/queries
+* declare zero or more adapter/query pair flows, each of which:
+	* may have autotasking enabled (by default) or disabled:
+		* uses logID bookmark to autogenerate tasks and feed pre-task queue of chains as job graph grows
+		* may use LGQL template to further restrict query
+	* may be manually driven
+		* may use LGQL template to further restrict query
+	* may be disabled (or re-enabled) - while disabled, flows:
+		* can still be manually driven
+		* will accept task results
+		* will generate tasks to drain pre-task queue
+		* will not exercise autotasking
+	* may have a flow-specific default task timeout (_60_ seconds, use _0_ to disable automatic retry)
+	* may have a flow-specific default task size upper limit (_200_)
 
 ## Adapters
 
-* poll for new tasks
+* poll server for new tasks from any job
 	* may request a specific query pattern
-	* may provide a blacklist of tasks
-	* may provide a minimum age (seconds):
-		* tasks issued less than _N_ seconds ago will not be returned
+	* may provide a list of tasks to ignore
+	* may provide a task timeout (seconds), after which a task may be re-issued:
+		* default is flow default, which defaults to _60_ seconds
+		* use _0_ to disable automatic retry
+	* may provide an upper limit for task size
+	    * default is flow default, which defaults to 200 records
+		* ignored when re-issuing existing tasks
 	* are responsible for pausing before retrying if no tasks were available
 
 * can touch tasks
 	* updates task timestamp
-	* keeps them from being re-issued prematurely, if minimum age is used above
+	* if configured, timeout is extended
 
 * post task results
-	* task will be consumed (deleted) unless otherwise specified
-	* updates task timestamp unless consumed
-
-## Jobs
-
-Jobs themselves are created/updated/deleted via the existing `/graph` endpoint, and:
-
-* have a priority - low: _0_, high: _255_, default: _100_
-* can be enabled/disabled entirely
-* declare zero or more adapter/query pairs, each of which:
-	* track outstanding tasks
-	* track length of pre-task queue of chains
-	* may use LGQL templating to further extend query
-	* may be disabled (or re-enabled):
-		* if disabled, accepts results, can be manually driven, but won't issue additional autotasks
-	* may have autotasking enabled or disabled:
-		* uses logID bookmark to autogenerate tasks
-	* may be manually driven, optionally using LGQL templating to extend
+	* updates task timestamp
+	* task will be marked as _done_ unless otherwise specified

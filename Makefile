@@ -46,10 +46,12 @@ uninstall:
 sdist: deps
 	CFLAGS="$(PYTHON_CFLAGS)" $(PYTHON) setup.py sdist
 
-snapshot:
+snapshot: deps
 	@rm -rf $(SNAPSHOT) $(SNAPSHOT).zip
 	@git clone . $(SNAPSHOT)
-	@$(MAKE) -C $(SNAPSHOT) deps
+	@cp -a deps/. $(SNAPSHOT)/deps/.
+	@git -C $(SNAPSHOT) remote remove origin
+	@rm -rf $(SNAPSHOT)/.git/logs
 	@zip -q -r9 $(SNAPSHOT).zip $(SNAPSHOT)
 	@rm -rf $(SNAPSHOT)
 	@echo $(SNAPSHOT).zip

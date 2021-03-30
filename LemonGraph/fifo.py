@@ -1,9 +1,7 @@
-from . import lib, ffi, lazy
+from . import lib, ffi, lazy, unspecified
 from .serializer import Serializer
 
 from collections import deque
-
-UNSPECIFIED = object()
 
 class Fifo(object):
     def __init__(self, txn, domain, map_values=False, serialize_domain=Serializer(), serialize_value=Serializer()):
@@ -27,8 +25,8 @@ class Fifo(object):
         if len(dlen) != r:
             raise IOError()
 
-    def pop(self, count=UNSPECIFIED):
-        n = 1 if count is UNSPECIFIED else int(count)
+    def pop(self, count=unspecified):
+        n = 1 if count is unspecified else int(count)
         data = ffi.new('void *[]', n)
         dlen = ffi.new('size_t []', n)
         n2 = lib.kv_fifo_peek_n(self._kv, data, dlen, n)
@@ -40,7 +38,7 @@ class Fifo(object):
             ret.append(self.serialize_value.decode(ffi.buffer(data[i], dlen[i])[:]))
             i += 1
         lib.kv_fifo_delete(self._kv, n2)
-        return ret[0] if count is UNSPECIFIED else tuple(ret)
+        return ret[0] if count is unspecified else ret
 
     @property
     def empty(self):

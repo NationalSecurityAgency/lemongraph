@@ -83,6 +83,7 @@ class StatusIndex(BaseIndex):
     indexer = StatusIndexer()
     domain = 'status'
     null = Serializer.null()
+    uuid = Serializer.uuid()
 
     def index(self, idx):
         try:
@@ -94,7 +95,7 @@ class StatusIndex(BaseIndex):
     def update(self, uuid, old, new):
         oldkeys = self.indexer.index(old)
         newkeys = self.indexer.index(new)
-        uuid = uuid.encode()
+        uuid = self.uuid.encode(uuid)
         for name, crc in oldkeys.difference(newkeys):
             keys = self.index(name)
             try:
@@ -113,7 +114,7 @@ class StatusIndex(BaseIndex):
         except KeyError:
             return
         for key in index.iterpfx(pfx=crc):
-            uuid = key[crclen:].decode()
+            uuid = self.uuid.decode(key[crclen:])
             status = self.ctx.statusDB[uuid]
             if check(status):
                 yield uuid, status
@@ -193,6 +194,8 @@ class LG_LiteIndex(BaseIndex):
         return self.ctx.txn.kv('lg.collection.idx.adapters', map_keys=True, serialize_value=self.ctx.uint)
 
 class Context(object):
+    uuid = Serializer.uuid()
+
     def __init__(self, collection, write=True):
         self.db = collection.db
         self._graph = collection.graph
@@ -315,9 +318,9 @@ class Context(object):
 
         status['adapters'] = adapters = []
         if status['enabled']:
-            pri = (status['priority'],)
+            priority = status['priority']
             for flow in txn.lg_lite.flows(active=True):
-                adapters.append(flow.aqb + pri)
+                adapters.append((flow.adapter, flow.query, priority))
 
         try:
             old_status = self.statusDB[uuid]
@@ -340,11 +343,11 @@ class Context(object):
 
     @lazy
     def statusDB(self):
-        return self.txn.kv('lg.collection.status', serialize_value=self.msgpack)
+        return self.txn.kv('lg.collection.status', serialize_key=self.uuid, serialize_value=self.msgpack)
 
     @lazy
     def metaDB(self):
-        return self.txn.kv('lg.collection.meta', serialize_value=self.msgpack)
+        return self.txn.kv('lg.collection.meta', serialize_key=self.uuid, serialize_value=self.msgpack)
 
 
 class Collection(object):
@@ -366,6 +369,8 @@ class Collection(object):
         self.notls = kwargs.get('notls', False)
         kwargs['serialize_property_value'] = self.msgpack
         kwargs['create'] = create
+        if rebuild:
+            os.remove(idx)
         self.db = Graph(idx, **kwargs)
         if not rebuild:
             with self.context(write=False) as ctx:
@@ -503,7 +508,7 @@ class Collection(object):
 
     @lazy
     def _words(self):
-        return re.compile('\w+')
+        return re.compile(r'\w+')
 
     def status(self, uuid, **kwargs):
         with self.context(write=False) as ctx:

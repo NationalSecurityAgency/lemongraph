@@ -34,12 +34,14 @@
 * [/lg/config/{*job_uuid*}/{*adapter*}](#lgconfigjob_uuidadapter)
 * [/lg/adapter/{*adapter*}](#lgadapteradapter)
 * [/lg/adapter/{*adapter*}/{*job_uuid*}](#lgadapteradapterjob_uuid)
-* [/lg/adapter/{*adapter*}/{*job_uuid*}/{*task_uuid*}](#lgadapteradapterjob_uuidtask_uuid)
+* [/lg/task/{*job_uuid*}](#lgtaskjob_uuid)
+* [/lg/task/{*job_uuid*}/{*task_uuid*}](#lgtaskjob_uuidtask_uuid)
 
 ---
 
 #### Data Types
 * *uint* - unsigned integer
+* *unum* - unsigned number
 * *uuid* - time-based v1 uuids
 * *flag* - true if present and not set to '0', 'false', or 'no', else false
 * *pattern* - [LemonGraph query language pattern](README.md#query-language)
@@ -47,10 +49,12 @@
 	* `2019-06-11T15:12:19.759817Z`
 	* `2019-06-11T11:12:19.759817-0400`
 	* `2019-06-11 11:12:19.759817 EST`
+* *timestamp* - unsigned float - seconds since unix epoch
 * *boolean* - standard boolean
 * *string* - standard string
 * *dict* - standard dict/object/hashmap
 * *list* - standard list/array
+* *value* - any valid json value - object/array/string/number/boolean/null
 
 #### Graph-specific endpoint query parameters
 All graph-specific endpoints (any with *uuid*) include the following query parameters:
@@ -407,6 +411,8 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 		* set/update primary query config:
 			* __query__: if present, sets as primary flow, any missing fields are inherited from previous primary, and previous primary's autotasking is disabled
 			* __filter__: query filter to append when generating new tasks
+			* __limit__: default batch size for new tasks (default: 200)
+			* __timeout__: default timeout (seconds) for new tasks (default: 60)
 			* __enabled__: enable/disable this query entirely
 			* __autotask__: enable/disable autotasking for this query (use of _pos_ as bookmark against logID to generate tasks)
 			* __pos__: current logID bookmark for this query for this job
@@ -414,6 +420,8 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 				{
 					"query": string,
 					"filter": string,
+					"limit": uint,
+					"timeout": unum,
 					"enabled": boolean,
 					"autotask": boolean,
 					"pos": uint
@@ -433,16 +441,18 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 		* Content-Type: `application/json`, `application/x-msgpack`
 	* parameters/payload - all fields are optional:
 		* __query__ - limit tasks to be for a specific _query_ or queries (else round-robins through available)
-		* __limit__ - limit task size to _limit_ records (default: __200__, does not apply to re-issued tasks)
-		* __min\_age__ - skip tasks if touched less than _min\_age_ seconds ago (default: __60__)
-		* __blacklist__ - skip provided list of tasks
+		* __limit__ - limit task size to _limit_ records - default (200) inherited from adapter config, does not apply to re-issued tasks
+		* __timeout__ - set task timeout to _timeout_ seconds in the future - default (60) inherited from adapter config, use __0__ to disable
+		* __ignore__ - skip provided list of tasks
+		* __uuid__ - limit task to be from supplied job uuid(s)
 		* __meta__ - list of keys to harvest from graph meta and bundle with task data
 			```javascript
 			{
 				"query": string,
 				"limit": uint,
-				"min_age": uint,
-				"blacklist": list,
+				"timeout": unum,
+				"ignore": list,
+				"uuid": list,
 				"meta": list
 			}
 			```
@@ -463,7 +473,32 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 			}
 			```
 
-#### /lg/adapter/{*adapter*}/{*job_uuid*}/{*task_uuid*}
+
+#### /lg/task/{*job_uuid*}
+* __GET__/__POST__
+	* Request headers:
+		* Accept: `application/json`, `application/x-msgpack`
+	* parameters/payload:
+		* __adapter__: optionally optionally filter by adapters
+		* __query__: optionally filter by adapter queries
+		* __state__: optionally filter by task states (__active__, __done__, or __error__)
+		* __update__: optional dict containing settings to update on all matched tasks
+			```javascript
+			{
+				"adapter": list,
+				"query": list,
+				"state": list,
+				"update": {
+		            "state": string (__active__, __done__, __error__, __retry__, or __delete__/__deleted__)
+		            "touch": bool (now) or timestamp,
+		            "timeout": unum (use 0 to disable),
+		            "retry": bool/uint (to increment/set retry count),
+		            "details": value
+				},
+			}
+			```
+
+#### /lg/task/{*job_uuid*}/{*task_uuid*}
 * __GET__ - Update task timestamp, return specific task
 	* Request headers:
 		* Accept: `application/json`, `application/x-msgpack`
@@ -475,7 +510,14 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 	* Request headers:
 		* Content-Type: `application/json`, `application/x-msgpack`
 	* payload:
-		* __consume__: if true, delete task successful ingest, else just update task timestamp (default: __true__)
+		* __state__: valid task states include: __active__, __done__, __error__, __retry__, or __delete__/__deleted__
+			* if string, task must currently be __active__, and will be set to the provided task state
+			* if list, task state must be one of provided, and will not be modified
+			* if dict, task state must be one of the keys, and will be set to the associated value
+			* if not provided, default behavior is to set an __active__ task to __done__
+			* __retry__ is a pseudo-state - it sets the state to __active__, __touch__ to __now() - 1__, and __timeout__ to __1__
+		* __timeout__: assign new task timeout - use 0 to disable
+		* __details__: assign task details to supplied value
 		* __nodes__: list of node objects
 		* __edges__: list of edge objects
 		* __chains__: list of node[/edge/node]* chains
@@ -483,7 +525,9 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 		* __adapters__: job's adapters - see [`/lg/config/{*job_uuid*}`](#lgconfigjob_uuid) endpoint above
 			```javascript
 			{
-				"consume": boolean,
+				"state": string|list|dict,
+				"timeout": unum,
+				"details": value,
 				"nodes": list,
 				"edges": list,
 				"chains": list,
@@ -491,4 +535,3 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 				"adapters": dict
 			}
 			```
-

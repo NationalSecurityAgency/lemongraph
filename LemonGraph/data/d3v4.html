@@ -91,77 +91,91 @@ function halt_sim(){
 }
 
 var pos = 0
+var old_nodes = []
 
 function updategraph(){
-	var qs = window.location.search
-	if (qs == "?" || qs == ""){
-		qs = "?pos=" + pos
-	}else{
-		qs += "&pos=" + pos
-	}
-	d3.json("/d3/" + uuid + qs, makegraph)
+  var qs = window.location.search
+  if (qs == "?" || qs == ""){
+    qs = "?pos=" + pos
+  }else{
+    qs += "&pos=" + pos
+  }
+  d3.json("/d3/" + uuid + qs, makegraph)
 }
 
 function makegraph(error, graph) {
-  if (error){
-    w.setTimeout(updategraph, 1000)
-    throw error
-  }
-
-  if(graph["pos"] == pos){
+  if (error || pos == graph.pos){
     w.setTimeout(updategraph, 1000)
     return
   }
 
-  pos = graph["pos"]
+  pos = graph.pos
   svg.selectAll("*").remove();
 
-  for(var i = graph.nodes.length - 1; i >= 0; i--){
-    graph.nodes[i].neighbors = {}
-  }
+  graph.nodes.forEach((node, i) => {
+    node.neighbors = {}
+    if(i < old_nodes.length){
+      var o = old_nodes[i]
+      node.x = o.x
+      node.y = o.y
+      node.vx = o.vx
+      node.vy = o.vy
+    }
+  })
 
-  for(var i = graph.edges.length - 1; i >= 0; i--){
-    var e = graph.edges[i]
-    graph.nodes[e.source].neighbors[e.target] = true
-    graph.nodes[e.target].neighbors[e.source] = true
-  }
+  graph.edges.forEach(edge => {
+    var src = graph.nodes[edge.source]
+    var tgt = graph.nodes[edge.target]
+    src.neighbors[edge.target] = tgt
+    tgt.neighbors[edge.source] = src
+  })
 
   graph.max_nc = 0
-  for(var i = graph.nodes.length - 1; i >= 0; i--){
-    var c = graph.nodes[i]
-    c.nc = Object.keys(c.neighbors).length
-    if(c.nc > graph.max_nc)
-      graph.max_nc = c.nc
-  }
+  graph.nodes.forEach(node => {
+    node.nc = Object.keys(node.neighbors).length
+    if(graph.max_nc < node.nc)
+      graph.max_nc = node.nc
+  })
 
-  for(var i = graph.nodes.length - 1; i >= 0; i--){
-    var c = graph.nodes[i]
-    c.max_neighbor_nc = 0
-    for(var neighbor in graph.nodes[i].neighbors){
-      var n = graph.nodes[Number(neighbor)]
-      if(n.nc > c.max_neighbor_nc)
-        c.max_neighbor_nc = n.nc
+  graph.nodes.forEach(node => {
+    node.max_neighbor_nc = 0
+    for(var neighborID in node.neighbors){
+      var neighbor = node.neighbors[neighborID]
+      if(node.max_neighbor_nc < neighbor.nc)
+        node.max_neighbor_nc = node.nc
     }
-  }
+  })
 
+  function sw(d){
+    return d.mark ? 1.5 : 1
+  }
+  function ls(d){
+    return d.mark ? "#1e1" : "#bbb"
+  }
+  function cs(d){
+    return d.mark ? "#1e1" : "#fff"
+  }
+  function cf(d){
+    return d.toobig ? "#000" : color(d.data.type)
+  }
   var link = svg.append("g")
     .attr("class", "links")
     .selectAll("line")
     .data(graph.edges)
-    .enter().append("line")
-      .attr("stroke-width", function(d) { return d.mark ? 3 : 2 })
-      .attr("stroke-opacity", function(d) { return d.mark ? 1 : 0.2 })
-      .attr("stroke", function(d){ return d.mark ? "#0e2" : "#222" })
+    .enter().append("path")
+      .attr("stroke", ls)
+      .attr("stroke-width", sw)
+      .attr("fill", "none")
 
   var node = svg.append("g")
     .attr("class", "nodes")
     .selectAll("circle")
     .data(graph.nodes)
     .enter().append("circle")
-      .attr("r", function(d){ return 5 + (graph.max_nc ? 4*Math.sqrt(clamp_nc(d.nc)/graph.max_nc) : 0) })
-      .attr("fill", function(d) { return d.toobig ? "#000" : color(d.data.type) })
-      .attr("stroke", function(d) { return d.mark ? "#0e2" : "#fff" })
-      .attr("stroke-width", function(d) { return d.mark ? 3 : 1 })
+      .attr("r", radius)
+      .attr("fill", cf)
+      .attr("stroke", cs)
+      .attr("stroke-width", sw)
       .call(d3.drag()
         .on("start", dragstarted)
         .on("drag", dragged)
@@ -173,29 +187,64 @@ function makegraph(error, graph) {
   node.append("title")
     .text(function(d) { return JSON.stringify(sortTopObject(d.data,['ID','type','value']), null, 2) })
 
+  function radius(d){
+    return 5 + (graph.max_nc ? 4*Math.sqrt(Math.min(d.nc, graph.max_nc)/graph.max_nc) : 0)
+  }
+
   simulation = d3.forceSimulation()
-    .velocityDecay(.12)
-    .alphaDecay(0.02)
-    .force("collide", d3.forceCollide(2))
+    .velocityDecay(.11)
+    .alphaDecay(0.019)
+    .force("collide", d3.forceCollide().radius(radius))
     .force("center", d3.forceCenter())
     .force("fX", d3.forceX())
     .force("fY", d3.forceY())
-
-  simulation
     .force("link", d3.forceLink().strength(function(link){
-      var min = clamp_nc(Math.min(link.source.nc, link.target.nc))
       var f = 1
-      if(min > 1)
+      if(clamp_nc(Math.min(link.source.nc, link.target.nc)) > 1)
         f = Math.pow((1 + graph.max_nc - clamp_nc(Math.min(link.source.max_neighbor_nc, link.target.max_neighbor_nc))) / graph.max_nc, .9)
       return f
     }))
 
     .force("charge", d3.forceManyBody().strength(function(n){
-      var f = n.nc ? -30 : -10
+      var f = n.nc ? -30 : -20
       if(n.nc > 1)
         f = - 100 * (clamp_nc(n.nc) + clamp_nc(n.max_neighbor_nc)) / graph.max_nc
       return f
     }))
+
+  function curve(d){
+    var p1x = d.source.x
+    var p1y = d.source.y
+
+    if(d.source === d.target){
+      var t = radius(d.source) + Math.pow(d.linknum - 1, .75) * 3;
+      return "M" + p1x + "," + p1y + "a" + t + "," + t + " 0 1,1 " + 1.5 + "," + 1
+    }
+
+    var p2x = d.target.x
+    var p2y = d.target.y
+
+    var dx = p1x - p2x
+    var dy = p1y - p2y
+    var dist = Math.sqrt(dx*dx + dy*dy)
+
+    // mid-point of line:
+    var mpx = (p2x + p1x) * 0.5;
+    var mpy = (p2y + p1y) * 0.5;
+
+    // angle of perpendicular to line:
+    var theta = Math.atan2(p2y - p1y, p2x - p1x) - Math.PI / 2;
+
+    // distance of control point from mid-point of line:
+    var offset =  d.linknum * dist * .2 * Math.pow(.98, d.linknum)
+
+    // location of control point:
+    var c1x = mpx + offset * Math.cos(theta);
+    var c1y = mpy + offset * Math.sin(theta);
+
+    // construct the command to draw a quadratic curve
+    return "M" + p1x + " " + p1y + " Q " + c1x + " " + c1y + " " + p2x + " " + p2y;
+  }
 
   function clamp_nc(nc){
     return Math.min(nc, graph.max_nc)
@@ -210,16 +259,18 @@ function makegraph(error, graph) {
 
   function ticked() {
     link
-        .attr("x1", function(d) { return d.source.x })
-        .attr("y1", function(d) { return d.source.y })
-        .attr("x2", function(d) { return d.target.x })
-        .attr("y2", function(d) { return d.target.y })
+//        .attr("x1", function(d) { return d.source.x })
+//        .attr("y1", function(d) { return d.source.y })
+//        .attr("x2", function(d) { return d.target.x })
+//        .attr("y2", function(d) { return d.target.y })
+        .attr("d", curve)
 
     node
         .attr("cx", function(d) { return d.x })
         .attr("cy", function(d) { return d.y })
   }
   w.setTimeout(updategraph, 1000)
+  old_nodes = graph.nodes
 }
 
 updategraph()

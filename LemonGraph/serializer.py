@@ -2,7 +2,7 @@ from . import ffi, lib, wire
 import msgpack as messagepack
 import collections
 import sys
-import uuid
+from uuid import UUID
 
 try:
     xrange          # Python 2
@@ -180,13 +180,11 @@ class Serializer(object):
         return Serializer(encode=encode, decode=decode)
 
 class vuints_impl:
-    buffer = None
-    decoded = None
-    maxlen = 0
-
     def __init__(self, decode_type):
         self.decode_type = decode_type
-        self.alloc(1)
+        self.buffer = None
+        self.decoded = None
+        self.maxlen = 0
 
     def alloc(self, count):
         self.buffer = ffi.new('char[]', 9 * count)
@@ -226,7 +224,7 @@ class uints2d_impl:
         rows, cols = decoded
         decoded = ffi.new('uint64_t[]', cols)
         ret = []
-        while rows > 0:
+        while rows:
             offset += lib.unpack_uints(cols, decoded, b[offset:])
             ret.append(tuple(map(int,decoded)))
             rows -= 1
@@ -240,8 +238,17 @@ class uints2d_impl:
         return ret
 
 class UUID_impl(object):
-    def encode(self, s):
-        return uuid.UUID(s).bytes
+    def __init__(self):
+        self._buf = ffi.new('char[]', 36)
+        self._bin = ffi.buffer(self._buf, 16)
+        self._str = ffi.buffer(self._buf, 36)
 
-    def decode(self, b):
-        return str(uuid.UUID(bytes=b))
+    def encode(self, string):
+        if lib.pack_uuid(wire.encode(string), self._buf) != 16:
+            raise ValueError(string)
+        return self._bin[:]
+
+    def decode(self, binary):
+        if lib.unpack_uuid(binary, self._buf) != 36:
+            raise ValueError(binary)
+        return wire.decode(self._str[:])

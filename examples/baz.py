@@ -34,9 +34,9 @@ else:
 rc = RESTClient(sockpath=sockpath, host=server.hostname, port=server.port or 80)
 
 while True:
-    # fetch task json - we are just scanning for nodes
+    # fetch task json
     try:
-        status, headers, task = rc.get('/lg/adapter/BAR', json={ 'query': 'n(foo)', 'limit': args.limit })
+        status, headers, task = rc.get('/lg/adapter/BAZ', json={ 'query': 'n()->e()->n()', 'limit': args.limit })
     except rc.error:
         time.sleep(1)
         continue
@@ -54,18 +54,19 @@ while True:
 
     chains = []
     # remaining items are node/edge chains from query
-    # our chains for the above query are single nodes
-    for n, in records:
-        for i in 1,2,3:
-            if random.random() < 0.25:
-                continue
-            chain = [
-                { 'ID': n['ID'] },
-                { 'type': '%s_%s' % (n['type'], 'bar') },
-                { 'type': 'bar', 'value': 'bar%d' % random.randint(0,99999) },
-            ]
-            # append to updates
-            chains.append(chain)
+    for n1, e, n2, in records:
+        if random.random() < 0.2:
+            chains.append([
+                { 'ID': n2['ID'] },
+                { 'type': 'baz' },
+                { 'ID': n1['ID'] },
+            ])
+        if random.random() < .1:
+            chains.append([
+                { 'ID': n1['ID'] },
+                { 'type': 'baz', 'value': '%.2f' % random.random() },
+                { 'ID': n1['ID'] },
+            ])
 
     if args.delay:
         time.sleep(args.delay)

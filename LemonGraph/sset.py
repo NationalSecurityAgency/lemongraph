@@ -1,7 +1,5 @@
-from . import lib, ffi, wire
+from . import lib, ffi, wire, unspecified
 from .serializer import Serializer
-
-UNSPECIFIED = object()
 
 class SSet(object):
     def __init__(self, txn, domain, map_values=False, serialize_domain=Serializer(), serialize_value=Serializer()):
@@ -29,12 +27,12 @@ class SSet(object):
         if not r:
             raise KeyError(value)
 
-    def pop(self, n=UNSPECIFIED, default=UNSPECIFIED):
-        if n is UNSPECIFIED:
+    def pop(self, n=unspecified, default=unspecified):
+        if n is unspecified:
             for ret in self:
                 self.remove(ret)
                 return ret
-            if default is UNSPECIFIED:
+            if default is unspecified:
                 raise IndexError
             ret = default
         else:
@@ -42,7 +40,7 @@ class SSet(object):
                 self.remove(n)
                 ret = n
             except KeyError:
-                if default is UNSPECIFIED:
+                if default is unspecified:
                     raise
                 ret = default
         return ret

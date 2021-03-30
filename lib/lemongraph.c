@@ -39,31 +39,7 @@ STATIC_ASSERT(sizeof(uint64_t) == sizeof(strID_t), "");
 //#define debug(args...) do{ fprintf(stderr, "%d: ", __LINE__); fprintf(stderr, args); }while(0)
 //#define debug(args...) while(0);
 
-// provide type-agnostic clz wrapper, and return a more useful value for clz(0)
-#define __clz_wrapper(x) (unsigned int)((x) ? (sizeof(x) == sizeof(long) ? (unsigned)__builtin_clzl(x) : (sizeof(x) == sizeof(long long) ? (unsigned)__builtin_clzll(x) : (unsigned)__builtin_clz((int)(x)))) : sizeof(x) * 8)
-
-// quickly take unsigned numeric types and count minimum number of bytes needed to represent - for varint encoding
-#define intbytes(x) (sizeof(x) - __clz_wrapper(x) / 8)
-
-// encode unsigned values into buffer, advancing iter
-// ensure you have a least 9 bytes per call
-#define encode(x, buffer, iter) do{ \
-	int _shift; \
-	((uint8_t *)(buffer))[iter] = intbytes(x); \
-	for(_shift = (((uint8_t *)(buffer))[iter++] - 1) * 8; _shift >= 0; iter++, _shift -= 8) \
-		((uint8_t *)(buffer))[iter] = ((x) >> _shift) & 0xff; \
-}while(0)
-
-// corresponding decode
-#define decode(x, buffer, iter) do{ \
-	uint8_t _count = ((uint8_t *)(buffer))[iter++]; \
-	assert(sizeof(x) >= _count); \
-	x = 0; \
-	while(_count--) \
-		x = (x<<8) + ((uint8_t *)(buffer))[iter++]; \
-}while(0)
-
-#define enclen(buffer, offset) (1 + ((uint8_t *)(buffer))[offset])
+#include"uic.h"
 
 #define esizeof(x) (sizeof(x)+1)
 
@@ -108,6 +84,75 @@ uint64_t unpack_uint(char *buffer){
 	uint64_t i;
 	decode(i, buffer, len);
 	return i;
+}
+
+static int pack_nibble(char ch){
+	if(ch <= '9' && ch >= '0')
+		return ch - '0';
+	if(ch <= 'f' && ch >= 'a')
+		return 10 + ch - 'a';
+	if(ch <= 'F' && ch >= 'A')
+		return 10 + ch - 'A';
+	return -1;
+}
+
+static int pack_hex(char *hex){
+	return (pack_nibble(hex[0])<<4) | pack_nibble(hex[1]);
+}
+
+int pack_uuid(char *uuid, char *bin){
+	static const struct {
+		const uint8_t offset:4;
+		const uint8_t octets:4;
+	} map [] = {
+		{ 4,  4 },
+		{ 2,  2 },
+		{ 0,  2 },
+		{ 8,  2 },
+		{ 10, 6,},
+	};
+	unsigned int i;
+	for(i = 0; i < sizeof(map)/sizeof(*map); i++){
+		int offset = map[i].offset;
+		int octets = map[i].octets;
+		do{
+			int octet = pack_hex(uuid);
+			if(octet < 0)
+				return -1;
+			bin[offset++] = octet;
+			uuid += 2;
+		}while(--octets);
+		// skip the hyphen
+		uuid++;
+	}
+	return 16;
+}
+
+int unpack_uuid(char *bin, char *uuid){
+	char *hex = "0123456789abcdef";
+	static const struct {
+		const uint8_t offset:5;
+		const uint8_t octets:3;
+	} map[] = {
+		{ 14, 2 },
+		{ 9,  2 },
+		{ 0,  4 },
+		{ 19, 2 },
+		{ 24, 6 },
+	};
+	unsigned int i;
+	for(i = 0; i < sizeof(map)/sizeof(*map); i++){
+		int offset = map[i].offset;
+		int octets = map[i].octets;
+		if(offset)
+			uuid[offset-1] = '-';
+		do{
+			uuid[offset++] = hex[(*bin >> 4) & 0xf];
+			uuid[offset++] = hex[*bin & 0xf];
+			bin++;
+		}while(--octets);
+	}
+	return 36;
 }
 
 char *graph_strerror(int err){

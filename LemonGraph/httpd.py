@@ -51,7 +51,7 @@ log_proc.addHandler(logging.NullHandler())
 
 loglevels = {
     'info': log.info,
-    'warn': log.warn,
+    'warn': log.warning,
     'debug': log.debug,
 }
 
@@ -268,11 +268,26 @@ class Service(object):
         self.pr, self.pw = os.pipe()
 
         if sock is None:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, True)
-            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
-            sock.bind((host or '0.0.0.0', 8000 if port is None else port))
+            if not host:
+                host = '127.0.0.1'
+            if host[0] == '@': # '@' => abstract unix domain
+                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                sock.bind('\0' + host[1:])
+            elif '/' in host: # '/' => unix domain
+                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                sock.bind(host)
+            else: # assume ip or resolvable local hostname
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, True)
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
+                try:
+                    sock.bind((host, 8000 if port is None else port))
+                except socket.gaierror:
+                    sock.close()
+                    # fall back to unix domain
+                    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    sock.bind(host)
 
         sock.listen(socket.SOMAXCONN)
         sock.setblocking(0)
@@ -313,8 +328,12 @@ class Service(object):
 #        signal.signal(signal.SIGHUP,  _reload)
 
         procs = {}
-        ip, port = self.sock.getsockname()
-        log_proc.info("+master(%d): listening on %s:%d", os.getpid(), ip, port)
+        addr = self.sock.getsockname()
+        if isinstance(addr, tuple):
+            addr = ':'.join(str(a) for a in addr)
+        elif not isinstance(addr, type('')):
+            addr = addr.decode().replace('\x00','@')
+        log_proc.info("+master(%d): listening on %s", os.getpid(), addr)
 
         def spawn(label, target):
             try:
@@ -386,9 +405,9 @@ class Service(object):
         pipe_fd = self.pr
 
         poll = select.poll()
-        poll.register(sock_fd, select.POLLIN)
         poll.register(pipe_fd, select.POLLIN)
         while self.maxreqs:
+            poll.register(sock_fd, select.POLLIN)
             fds = tuple(fd for fd, event in poll.poll(1000))
             if pipe_fd in fds:
                 raise Graceful
@@ -400,9 +419,21 @@ class Service(object):
                 continue
 
             log.debug('client %s:%d: connected', *addr)
+            conn_fd = conn.fileno()
+            poll.unregister(sock_fd)
+            poll.register(conn_fd, select.POLLIN)
             self.maxreqs -= 1
             try:
                 while True:
+                    # fixme - perhaps this should have a timeout?
+                    fds = tuple(fd for fd, event in poll.poll())
+                    if pipe_fd in fds:
+                        self.maxreqs = 0
+                        poll.unregister(pipe_fd)
+                        if conn_fd not in fds:
+                            raise Disconnected('server shutdown', level='debug')
+                    elif conn_fd not in fds:
+                        continue
                     res = Response(conn)
                     try:
                         try:
@@ -412,7 +443,8 @@ class Service(object):
                                 res.headers.set('Connection', 'close')
                             self.process(req, res)
                         except HTTPError as e:
-                            log.info('HTTP error %s', e)
+                            if e.code >= 400:
+                                log.info('HTTP error %s', e)
                             res.error(e.code, e.message, *e.headers)
                     except ErrorCompleted:
                         pass
@@ -431,6 +463,7 @@ class Service(object):
                 log.error('Unhandled exception: %s', traceback.print_exception(*info))
                 sys.exit(1)
             finally:
+                poll.unregister(conn)
                 close_socket(conn)
                 log.debug('client %s:%d: finished', *addr)
 
@@ -600,8 +633,8 @@ class Response(object):
 
 
 class Request(object):
-    req = re.compile('^(' + '|'.join(HTTPMethods.all_methods) + ') (.+?)(?: (HTTP/[0-9.]+))?(\r?\n)$')
-    hsplit = re.compile(':\s*')
+    req = re.compile('^(' + '|'.join(HTTPMethods.all_methods) + r') (.+?)(?: (HTTP/[0-9.]+))?(\r?\n)$')
+    hsplit = re.compile(r':\s*')
 
     def __init__(self, sock, timeout=10):
         self.sock = sock
@@ -715,9 +748,9 @@ class Header(object):
     @staticmethod
     def clean(*values):
         if len(values) == 1:
-            values = deque(s for s in str(values[0]).split(',') if len(s) > 0)
+            values = list(s for s in str(values[0]).split(',') if len(s) > 0)
         else:
-            values = deque(s for s in map(str, values) if len(s) > 0)
+            values = list(s for s in map(str, values) if len(s) > 0)
         return values
 
     def __init__(self, label, *values):
@@ -730,12 +763,18 @@ class Header(object):
     def __repr__(self):
         return 'Header(%s, %s)' % (repr(self.label), repr(list(self.values)))
 
+    def __iter__(self):
+        return iter(self.values)
+
+    def __getitem__(self, idx):
+        return self.values[idx]
+
     def __str__(self):
         return ','.join(self.values)
 
     def __delitem__(self, value):
         v = str(value)
-        self.values = deque(val for val in self.values if val != v)
+        self.values = list(val for val in self.values if val != v)
 
     def __len__(self):
         return len(self.values)
@@ -758,8 +797,12 @@ class Headers(object):
     def reset(self):
         self.data = {}
 
+    def items(self):
+        for h in itervalues(self.data):
+            yield h.label, str(h)
+
     def __str__(self):
-        lines = ['%s: %s' % (h.label, str(h)) for h in itervalues(self.data)]
+        lines = ['%s: %s' % h for h in self.items()]
         lines.extend(('', ''))
         return '\r\n'.join(lines)
 
