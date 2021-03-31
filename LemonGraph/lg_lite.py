@@ -30,9 +30,9 @@ def efilter(iterable, exceptions, cb):
             pass
 
 TPS = 10
-def to_ticks(ts=None, inv=1.0/TPS):
+def to_ticks(ts=None, inv=1.0/TPS, round=True):
     if ts is None:
-        ts = time() + inv
+        ts = time() + (inv if round else 0)
     if ts < 0:
         raise ValueError(ts)
     return int(ts * TPS)
@@ -523,7 +523,7 @@ class Task(object):
         flen = len(flow._pkey)
         try:
             enc = next(encs)
-            ts = to_ticks(ts)
+            ts = to_ticks(ts, round=False)
             while True:
                 # second part is timestamp
                 tlen = lib.unpack_uints(1, cls._ts, enc[flen:])
@@ -656,8 +656,8 @@ class Task(object):
             delete = True
         elif state == 'retry':
             state = 'active'
-            touch = to_ticks() - 1
-            timeout = 1
+            touch = from_ticks(to_ticks() - 1)
+            timeout = from_ticks(1)
 
         # clone current status
         _status = list(self._status)
@@ -720,4 +720,4 @@ class Task(object):
     @property
     def _rkey(self):
         if self.active and self.timeout:
-            return self.flow._pkey + uint.encode(self.timestamp + self.timeout) + self._bid
+            return self.flow._pkey + uint.encode(self._status[3] + self._status[4]) + self._bid
