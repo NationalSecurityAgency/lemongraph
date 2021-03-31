@@ -651,6 +651,7 @@ class Test_Endpoints(LocalServer):
         client = self.client
 
         code, headers, data = client.post('/graph', json=job)
+        self.assertEqual(code, 201)
         jobID = data['id']
 
         code, headers, work = client.get('/lg')
@@ -664,7 +665,7 @@ class Test_Endpoints(LocalServer):
             progress = False
             for adapter in work.keys():
                 # try to pull task for adapter - set short timeout so lost tasks get replayed sooner
-                code, headers, data = client.get('/lg/adapter/%s' % adapter, params=dict(timeout=0.5))
+                code, headers, data = client.get('/lg/adapter/%s' % adapter, params=dict(timeout=1.0/TPS))
                 if code == 204:
                     continue
                 self.assertEqual(code, 200)
