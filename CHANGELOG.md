@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.1]
+
+- Fixed timestamp/timeout bug
+- Fixed for Python 2 on macOS - use select.select() instead of select.poll()
+- Example adapter cleanup
+
 ## [1.0.0] - 2021-03-30
 
 - Lots of __breaking changes__ - old graph binaries are incompatible
