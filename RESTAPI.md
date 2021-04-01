@@ -444,7 +444,7 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 		* __limit__ - limit task size to _limit_ records - default (200) inherited from adapter config, does not apply to re-issued tasks
 		* __timeout__ - set task timeout to _timeout_ seconds in the future - default (60) inherited from adapter config, use __0__ to disable
 		* __ignore__ - skip provided list of tasks
-		* __uuid__ - limit task to be from supplied job uuid(s)
+		* __uuid__ - limit task to be from supplied job uuid[s]
 		* __meta__ - list of keys to harvest from graph meta and bundle with task data
 			```javascript
 			{
@@ -479,14 +479,14 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 	* Request headers:
 		* Accept: `application/json`, `application/x-msgpack`
 	* parameters/payload:
-		* __adapter__: optionally optionally filter by adapters
-		* __query__: optionally filter by adapter queries
+		* __task__: if supplied, examine provided task uuid[s] only
 		* __state__: optionally filter by task states (__active__, __done__, or __error__)
+		* __adapter__: optionally filter by adapters
 		* __update__: optional dict containing settings to update on all matched tasks
 			```javascript
 			{
+				"task": list,
 				"adapter": list,
-				"query": list,
 				"state": list,
 				"update": {
 		            "state": string (__active__, __done__, __error__, __retry__, or __delete__/__deleted__)
