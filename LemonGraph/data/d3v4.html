@@ -52,7 +52,7 @@ var svg = d3.select("svg")
   .append("g")
 
 function sortObject(obj) {
-  if(obj.constructor !== Object)
+  if(obj === null || obj.constructor !== Object)
     return obj
   var tmp = {}
   var keys = []
