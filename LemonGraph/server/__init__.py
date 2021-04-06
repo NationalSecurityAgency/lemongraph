@@ -773,23 +773,22 @@ class D3_UUID(_Streamy, Handler):
         self.map = {}
         stop = int(self.param('stop', 0))
         pos = int(self.param('pos', 0))
-        mqs = self.params.get('mark')
         if stop:
             txn.beforeID = stop + 1
         if txn.nextID == pos:
             raise HTTPError(304, 'Not Modified')
-        mark = ()
-        if mqs:
-            mark = set()
-            for query, chain in txn.mquery(mqs):
-                for x in chain:
-                    mark.add(x.ID)
-        return self._dump_json(txn, mark)
+        mark = self._get_ids(txn, 'mark')
+        filter = self._get_ids(txn, 'filter')
+        return self._dump_json(txn, filter, mark)
 
-    def mdumps(self, d, mark):
-        if d['data']['ID'] in mark:
-            d['mark'] = True
-        return self.dumps(d)
+    def _get_ids(self, txn, param):
+        s = set()
+        qs = self.params.get(param)
+        if qs:
+            for query, chain in txn.mquery(qs):
+                for x in chain:
+                    s.add(x.ID)
+        return s
 
     def mdumps(self, mark, x, **data):
         if x.ID in mark:
@@ -797,27 +796,27 @@ class D3_UUID(_Streamy, Handler):
         data['data'] = x.as_dict()
         return self.dumps(data)
 
-    def _dump_json(self, txn, mark):
+    def _dump_json(self, txn, filter, mark):
         yield '{"pos":' + str(txn.nextID) + ',"nodes":['
         nmap = {}
         nidx = 0
-        nodes = txn.nodes()
-        try:
-            n = next(nodes)
+        first = True
+        for n in txn.nodes():
+            if n.ID in filter:
+                continue
+            if first:
+                first = False
+            else:
+                yield ','
             nmap[n.ID] = nidx
             nidx += 1
             yield self.mdumps(mark, n)
-            for n in nodes:
-                yield ','
-                nmap[n.ID] = nidx
-                nidx += 1
-                yield self.mdumps(mark, n)
-        except StopIteration:
-            pass
         yield '],"edges":['
         first = True
         linknums = {}
         for e in txn.edges():
+            if filter.intersection((e.ID, e.srcID, e.tgtID)):
+                continue
             if first:
                 first = False
             else:
