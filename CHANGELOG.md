@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.0.3]
+
+- Allow node/edge filtering on D3 view
+
 ## [1.0.2]
 
 - Fixed/improved error handling for REST endpoints
