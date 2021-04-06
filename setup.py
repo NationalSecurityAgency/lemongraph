@@ -49,7 +49,7 @@ if __name__ == "__main__":
         maintainer='National Security Agency',
         maintainer_email='/dev/null',
         url='https://github.com/NationalSecurityAgency/lemongraph',
-        version='1.0.1',
+        version='1.0.2',
         description='LemonGraph Database',
         packages=['LemonGraph', 'LemonGraph.server'],
         package_data={'LemonGraph': ['data/*']},

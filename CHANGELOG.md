@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2]
+
+- Fixed/improved error handling for REST endpoints
+- Fixed javascript crash in D3 view when encountering null property values
+- Suppressed error when attemping to pull tasks on an LG-Lite job that hasn't issued any
+- Cleaned up some docs
+
 ## [1.0.1]
 
 - Fixed timestamp/timeout bug
