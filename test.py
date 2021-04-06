@@ -539,7 +539,7 @@ class LocalServer(unittest.TestCase):
         if pid == 0:
             try:
                 os.chdir(self.dir)
-                sys.argv[1:] = '-s -i socket -l warning -w 1 data'.split()
+                sys.argv[1:] = '-s -i ./socket -l warning -w 1 data'.split()
                 import LemonGraph.server.__main__
             finally:
                 os._exit(0)
