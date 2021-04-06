@@ -79,6 +79,11 @@ class LG_Lite(object):
             return flow.task(**kwargs)
 
     def tasks(self, uuids=unspecified, states=unspecified, adapters=unspecified):
+        try:
+            self.statusdb
+        except KeyError:
+            return ()
+
         if uuids is unspecified:
             # default to any task
             tasks = (self.task(uuid=u) for u in self.statusdb)
