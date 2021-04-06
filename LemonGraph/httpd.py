@@ -443,7 +443,9 @@ class Service(object):
                                 res.headers.set('Connection', 'close')
                             self.process(req, res)
                         except HTTPError as e:
-                            if e.code >= 400:
+                            if e.code >= 500:
+                                log.error('HTTP error %s', e)
+                            elif e.code >= 400:
                                 log.info('HTTP error %s', e)
                             res.error(e.code, e.message, *e.headers)
                     except ErrorCompleted:
@@ -460,7 +462,8 @@ class Service(object):
                 log.warning('client %s:%d: timed out', *addr)
             except Exception as e:
                 info = sys.exc_info()
-                log.error('Unhandled exception: %s', traceback.print_exception(*info))
+                trace = ''.join(traceback.format_exception(*info))
+                log.error('Unhandled exception: %s', trace)
                 sys.exit(1)
             finally:
                 ifds.remove(conn_fd)
@@ -495,7 +498,8 @@ class Service(object):
             if isinstance(e, HTTPError):
                 raise
             info = sys.exc_info()
-            log.error('Unhandled exception: %s', traceback.print_exception(*info))
+            trace = ''.join(traceback.format_exception(*info))
+            log.error('Unhandled exception: %s', trace)
             raise HTTPError(500, "Unhandled exception in handler: %s" % repr(e))
 
     def handle(self, body, req, res):
@@ -615,7 +619,8 @@ class Response(object):
                 self.sock.send(wire.encode(d))
         except Exception as e:
             info = sys.exc_info()
-            log.error('Unhandled exception: %s', traceback.print_exception(*info))
+            trace = ''.join(traceback.format_exception(*info))
+            log.error('Unhandled exception: %s', trace)
             raise Disconnected(str(e))
 
     @property

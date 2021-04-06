@@ -167,7 +167,8 @@ class Handler(HTTPMethods):
             raise
         except Exception:
             info = sys.exc_info()
-            log.error('Unhandled exception: %s', traceback.print_exception(*info))
+            trace = ''.join(traceback.format_exception(*info))
+            log.error('Unhandled exception: %s', trace)
             raise HTTPError(409, 'Bad data - %s decode failed' % self.content_type)
         return data
 
@@ -222,11 +223,13 @@ class Handler(HTTPMethods):
         try:
             return self.collection.graph(uuid, **kwargs)
         except (IOError, OSError) as e:
-            if e.errno is errno.EPERM:
-                raise HTTPError(403, str(e))
+            if e.errno is errno.ENOENT:
+                raise HTTPError(404, "Graph %s does not exist" % uuid)
             elif e.errno is errno.ENOSPC:
                 raise HTTPError(507, str(e))
-            raise HTTPError(404, "Backend graph for %s is inaccessible: %s" % (uuid, str(e)))
+            info = sys.exc_info()
+            trace = ''.join(traceback.format_exception(*info))
+            raise HTTPError(500, "Backend graph for %s is inaccessible: %s" % (uuid, trace))
 
     def tmp_graph(self, uuid):
         fd, path = tempfile.mkstemp(dir=self.collection.dir, suffix=".db", prefix="tmp_%s_" % uuid)
@@ -278,7 +281,8 @@ def graphtxn(write=False, create=False, excl=False, on_success=None, on_failure=
                 raise HTTPError(507 if e.errno is errno.ENOSPC else 500, str(e))
             except Exception as e:
                 info = sys.exc_info()
-                log.error('Unhandled exception: %s', traceback.print_exception(*info))
+                trace = ''.join(traceback.format_exception(*info))
+                log.error('Unhandled exception: %s', trace)
                 raise e
             finally:
                 if success is True:
