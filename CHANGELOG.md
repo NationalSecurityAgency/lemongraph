@@ -1,17 +1,26 @@
 # Changelog
 
-## [1.0.3]
+## [1.1.0] - 2021-04-13
+
+- Update to latest LMDB
+- In D3 view:
+  - Resize SVG viewport as window is resized
+  - Suspend polling when 'Pause' is clicked, resume when 'Continue' is clicked
+  - Added [json-view](https://github.com/pgrabovets/json-view) as an external dependency, so we can:
+  - Pop up rendered JSON properties and highlight node/edge when clicked
+
+## [1.0.3] - 2021-04-06
 
 - Allow node/edge filtering on D3 view
 
-## [1.0.2]
+## [1.0.2] - 2021-04-06
 
 - Fixed/improved error handling for REST endpoints
 - Fixed javascript crash in D3 view when encountering null property values
 - Suppressed error when attemping to pull tasks on an LG-Lite job that hasn't issued any
 - Cleaned up some docs
 
-## [1.0.1]
+## [1.0.1] - 2021-03-31
 
 - Fixed timestamp/timeout bug
 - Fixed for Python 2 on macOS - use select.select() instead of select.poll()
