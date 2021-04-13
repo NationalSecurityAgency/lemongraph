@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
+<link rel="stylesheet" type="text/css" href="/static/jsonview.bundle.css">
 <style>
-
 .svg-container {
   display: inline-block;
   position: relative;
@@ -19,8 +19,32 @@
   z-index: -1;
 }
 
+.info{
+  position: absolute;
+  visibility: hidden;
+  border: 1px solid #bbb;
+  padding: 3px 3px 3px 3px;
+  margin: 3px 3px 3px 3px;
+  background-clip: border-box;
+  background-color: white;
+}
+
+.json-container .json-number {
+  color: #aa1010;
+}
+.json-container .json-string {
+  color: #007b22;
+}
+.json-container .json-boolean {
+  color: #1010aa;
+}
 </style>
-<svg></svg>
+<svg width="100%" height="100%"></svg>
+<button class="export" onclick="export_svg()">Export SVG</button>
+<button onclick="halt_sim()">Pause</button>
+<button onclick="restart_sim()">Continue</button>
+<div class="info"></div>
+<script type="text/javascript" src="/static/jsonview.bundle.js"></script>
 <script src="/static/d3.v4.min.js"></script>
 <script type="text/javascript">
 function export_svg(){
@@ -29,11 +53,6 @@ function export_svg(){
     e.setAttribute('class', 'svg-crowbar')
     document.body.appendChild(e)
 }
-</script>
-<button onclick="export_svg()">Export SVG</button>
-<button onclick="halt_sim()">Pause</button>
-<button onclick="restart_sim()">Continue</button>
-<script>
 
 var w = window,
     d = document,
@@ -45,7 +64,7 @@ var w = window,
 
 var svg = d3.select("svg")
   .classed("svg-content-responsive", true)
-  .attr("preserveAspectRatio", "xMinYMin meet")
+  .attr("preserveAspectRatio", "xMidYMid slice")
   .attr("viewBox", -vbscale * width + " " + -vbscale * height + " " + 2 * vbscale * width + " " + 2 * vbscale * height)
   .call(d3.zoom().scaleExtent([0.125, 8]).on("zoom", function(){ svg.attr("transform", d3.event.transform) }))
   .on("dblclick.zoom", null)
@@ -83,15 +102,23 @@ var simulation,
     uuid = window.location.pathname.substr(window.location.pathname.length - 36)
 
 function restart_sim(){
-    simulation.alpha(1).restart()
+  simulation.alpha(1).restart()
+  if(poll === null)
+    poll = w.setTimeout(updategraph, 1000)
 }
 
 function halt_sim(){
-    simulation.stop()
+  simulation.stop()
+  if(poll !== null){
+    w.clearTimeout(poll)
+    poll = null
+  }
 }
 
 var pos = 0
 var old_nodes = []
+var poll = null
+var clicked = {}
 
 function updategraph(){
   var qs = window.location.search
@@ -105,7 +132,7 @@ function updategraph(){
 
 function makegraph(error, graph) {
   if (error || pos == graph.pos){
-    w.setTimeout(updategraph, 1000)
+    poll = w.setTimeout(updategraph, 1000)
     return
   }
 
@@ -121,6 +148,8 @@ function makegraph(error, graph) {
       node.vx = o.vx
       node.vy = o.vy
     }
+    if(clicked.ID === node.data.ID)
+      clicked.d = node
   })
 
   graph.edges.forEach(edge => {
@@ -128,6 +157,8 @@ function makegraph(error, graph) {
     var tgt = graph.nodes[edge.target]
     src.neighbors[edge.target] = tgt
     tgt.neighbors[edge.source] = src
+    if(clicked.ID === edge.data.ID)
+      clicked.d = edge
   })
 
   graph.max_nc = 0
@@ -147,35 +178,39 @@ function makegraph(error, graph) {
   })
 
   function sw(d){
-    return d.mark ? 1.5 : 1
+    return (d.mark || d.data.ID === clicked.ID) ? 1.5 : 1
   }
-  function ls(d){
-    return d.mark ? "#1e1" : "#bbb"
-  }
-  function cs(d){
-    return d.mark ? "#1e1" : "#fff"
+  function sk(d){
+    return (d.data.ID === clicked.ID) ? "#f11" : d.mark ? "#1e1" : d.neighbors ? "#fff" : "#bbb"
   }
   function cf(d){
     return d.toobig ? "#000" : color(d.data.type)
+  }
+  function id(d){
+    return 'ID' + d.data.ID
   }
   var link = svg.append("g")
     .attr("class", "links")
     .selectAll("line")
     .data(graph.edges)
     .enter().append("path")
-      .attr("stroke", ls)
+      .attr("id", id)
+      .attr("stroke", sk)
       .attr("stroke-width", sw)
       .attr("fill", "none")
+      .on("click", click)
 
   var node = svg.append("g")
     .attr("class", "nodes")
     .selectAll("circle")
     .data(graph.nodes)
     .enter().append("circle")
+      .attr("id", id)
       .attr("r", radius)
       .attr("fill", cf)
-      .attr("stroke", cs)
+      .attr("stroke", sk)
       .attr("stroke-width", sw)
+      .on("click", click)
       .call(d3.drag()
         .on("start", dragstarted)
         .on("drag", dragged)
@@ -189,6 +224,33 @@ function makegraph(error, graph) {
 
   function radius(d){
     return 5 + (graph.max_nc ? 4*Math.sqrt(Math.min(d.nc, graph.max_nc)/graph.max_nc) : 0)
+  }
+
+  function click(d){
+    var old = document.querySelector(".info")
+    var info = old.cloneNode(false)
+    old.parentNode.replaceChild(info, old)
+
+    if(d.data.ID == clicked.ID){
+      delete clicked.ID
+      info.style.visibility = "hidden"
+    }else{
+      var prevID = clicked.ID
+      clicked.ID = d.data.ID
+      if(prevID){
+        d3.select("#ID" + prevID)
+          .style("stroke", sk)
+          .style("stroke-width", sw)
+      }
+
+      const tree = JsonView.createTree(d.data);
+      JsonView.render(tree, info);
+      JsonView.expandChildren(tree);
+      info.style.visibility = "visible"
+    }
+    d3.select(this)
+      .style("stroke", sk)
+      .style("stroke-width", sw)
   }
 
   simulation = d3.forceSimulation()
@@ -269,8 +331,26 @@ function makegraph(error, graph) {
         .attr("cx", function(d) { return d.x })
         .attr("cy", function(d) { return d.y })
   }
-  w.setTimeout(updategraph, 1000)
+  poll = w.setTimeout(updategraph, 1000)
   old_nodes = graph.nodes
+
+  if(clicked.d !== undefined){
+    var old = document.querySelector(".info")
+    var info = old.cloneNode(false)
+    old.parentNode.replaceChild(info, old)
+
+    const tree = JsonView.createTree(clicked.d.data)
+    JsonView.render(tree, info)
+    JsonView.expandChildren(tree)
+
+    delete clicked.d
+    info.style.visibility = "visible"
+  }else if(clicked.ID){
+    var old = document.querySelector(".info")
+    var info = old.cloneNode(false)
+    old.parentNode.replaceChild(info, old)
+    info.style.visibility = "hidden"
+  }
 }
 
 updategraph()
