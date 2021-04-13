@@ -17,6 +17,8 @@ graphs.lock
 LemonGraph/data/d3.v3.min.js
 LemonGraph/data/d3.v4.min.js
 LemonGraph/data/svg-crowbar.js
+LemonGraph/data/jsonview.bundle.css
+LemonGraph/data/jsonview.bundle.js
 deps/*
 !deps/Makefile
 !deps/ext

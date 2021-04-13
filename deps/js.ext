@@ -4,6 +4,8 @@ js_urls=(
 	https://nytimes.github.io/svg-crowbar/svg-crowbar.js
 	https://d3js.org/d3.v3.min.js
 	https://d3js.org/d3.v4.min.js
+	http://pgrabovets.github.io/json-view/jsonview.bundle.js
+	http://pgrabovets.github.io/json-view/jsonview.bundle.css
 )
 
 function do_curl(){
