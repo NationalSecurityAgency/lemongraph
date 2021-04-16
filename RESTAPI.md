@@ -36,7 +36,7 @@
 * [/lg/adapter/{*adapter*}/{*job_uuid*}](#lgadapteradapterjob_uuid)
 * [/lg/task/{*job_uuid*}](#lgtaskjob_uuid)
 * [/lg/task/{*job_uuid*}/{*task_uuid*}](#lgtaskjob_uuidtask_uuid)
-
+* [/lg/test]{#lgtest)
 ---
 
 #### Data Types
@@ -535,3 +535,16 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 				"adapters": dict
 			}
 			```
+
+#### /lg/test
+* __GET__/__POST__
+	* Request headers:
+		* Accept: `application/json`, `application/x-msgpack`
+		* Content-Type: `application/json`, `application/x-msgpack`
+	* parameters/payload - all fields are optional:
+		* __query__: one or more LGQL query patterns
+			* check that each provided query is valid
+			* break query into a structure that provides
+				* required relationships between nodes/edges
+				* minimum required fields for each node/edge
+				* whether or not each node/edge would be included in query results
