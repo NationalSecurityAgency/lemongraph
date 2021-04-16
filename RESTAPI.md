@@ -36,7 +36,7 @@
 * [/lg/adapter/{*adapter*}/{*job_uuid*}](#lgadapteradapterjob_uuid)
 * [/lg/task/{*job_uuid*}](#lgtaskjob_uuid)
 * [/lg/task/{*job_uuid*}/{*task_uuid*}](#lgtaskjob_uuidtask_uuid)
-* [/lg/test]{#lgtest)
+* [/lg/test](#lgtest)
 ---
 
 #### Data Types
