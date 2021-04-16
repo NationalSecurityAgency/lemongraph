@@ -19,6 +19,7 @@ import traceback
 
 from .. import Serializer, Node, Edge, QuerySyntaxError, merge_values
 from ..collection import Collection, uuid_to_utc
+from ..MatchLGQL import MatchLGQL, QueryCannotMatch, QuerySyntaxError
 from ..lock import Lock
 from ..httpd import HTTPMethods, HTTPError, httpd, json_encode, json_decode
 from ..uuidgen import uuidgen
@@ -1423,6 +1424,36 @@ class LG__Task_Job_Task_get(_Params, _LG_Tasky):
         except KeyError:
             raise HTTPError(404, 'task not found: %s' % task_uuid)
 
+class MchLGQL(MatchLGQL):
+    suppress_node_fields = Node_Reserved
+    suppress_edge_fields = Edge_Reserved
+
+class LG__Test(_Params, Handler):
+    path = ('lg', 'test')
+    offset = 2
+
+    def _get_post(self):
+        data = self.input() or {}
+        params = self.merge_params(input=data, multi=('query',))
+        output = {}
+        queries = params.pop('query', [])
+        if queries:
+            qs = output['queries'] = {}
+            for q in queries:
+                if q in qs:
+                    continue
+                qinfo = qs[q] = {}
+                try:
+                    m = MchLGQL(q)
+                    qinfo['valid'] = True
+                except (QueryCannotMatch, QuerySyntaxError) as e:
+                    qinfo['error'] = str(e)
+                    continue
+                qinfo['reduced'] = m.reduce
+        return self.dumps(output, pretty=True)
+
+    get  = _get_post
+    post = _get_post
 
 class Server(object):
     def __init__(self, collection_path=None, collection_syncd=None, graph_opts=None, notls=False, **kwargs):
@@ -1452,6 +1483,7 @@ class Server(object):
             LG__Task_Job_Task,
             LG__Task_Job_Task_post,
             LG__Task_Job_Task_get,
+            LG__Test,
         )
 
         global lock

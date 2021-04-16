@@ -205,6 +205,9 @@ class QuerySyntaxError(Exception):
 
 
 class MatchLGQL(object):
+    suppress_node_fields = ()
+    suppress_edge_fields = ()
+
     def __init__(self, filter, cache=None):
         self.filter = filter
         self.pos = 0
@@ -242,7 +245,7 @@ class MatchLGQL(object):
             if info['type'] == self.matches[-1]['type']:
                 inferred = {
                     'type': OTHERTYPE[info['type']],
-                    'tests' : tuple([(('type',), 'exists', ())]),
+                    'tests' : [],
                     'next': link,
                     'prev': rlink,
                     'keep': False,
@@ -605,6 +608,26 @@ class MatchLGQL(object):
     def signature(self):
         return ''.join(m['type'] for m in self.matches if m['keep'])
 
+    @property
+    def reduce(self):
+        arrows = {
+            'in': '->',
+            'out': '<-',
+            'both': '-',
+        }
+        ret = []
+        for m in self.matches:
+            ret.append(arrows.get(m['prev'], None))
+            fields = set()
+            for t in m['tests'][m['fudged']:]:
+                fields.update(t[0])
+            fields.difference_update(self.suppress_node_fields if m['type'] == 'N' else self.suppress_edge_fields)
+            ret.append({
+                'type': m['type'].lower(),
+                'select': m['keep'],
+                'fields': sorted(fields),
+            })
+        return ret[1:]
 
 def eval_test(obj, test):
     target = obj
