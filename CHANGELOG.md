@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.2.0] - 2021-04-16
+
+- Added /lg/test endpoint for parsing/checking LGQL query patterns
+
 ## [1.1.0] - 2021-04-13
 
 - Update to latest LMDB
