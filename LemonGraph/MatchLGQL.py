@@ -620,7 +620,7 @@ class MatchLGQL(object):
             ret.append(arrows.get(m['prev'], None))
             fields = set()
             for t in m['tests'][m['fudged']:]:
-                fields.update(t[0])
+                fields.add(t[0])
             fields.difference_update(self.suppress_node_fields if m['type'] == 'N' else self.suppress_edge_fields)
             ret.append({
                 'type': m['type'].lower(),

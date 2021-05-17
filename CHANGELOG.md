@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.2.1] - 2021-05-17
+
+- Fixed bug on `MatchLGQL.reduce()` and `/lg/test` endpoint
+
 ## [1.2.0] - 2021-04-16
 
 - Added /lg/test endpoint for parsing/checking LGQL query patterns
