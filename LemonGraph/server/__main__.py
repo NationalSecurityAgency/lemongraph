@@ -89,6 +89,14 @@ def update_depth_cost():
                 if entry.is_edge_property:
                     apply_cost(txn, entry)
 
+def update_last_modified():
+    while True:
+        txn, entry = yield
+        if entry.is_edge_property or entry.is_node_property:
+            entry.parent['last_modified'] = txn._timestamp
+        elif entry.is_edge or entry.is_node:
+            entry['last_modified'] = txn._timestamp
+
 def main():
     levels = ('NOTSET', 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')
     try:
@@ -178,7 +186,7 @@ def main():
 
     graph_opts = dict(
         serialize_property_value=Serializer.msgpack(),
-        adapters=Adapters(seed_depth0, update_depth_cost),
+        adapters=Adapters(seed_depth0, update_depth_cost, update_last_modified),
         nosync=nosync, nometasync=nometasync,
         )
 

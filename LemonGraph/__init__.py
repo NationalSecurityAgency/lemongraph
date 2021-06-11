@@ -15,6 +15,7 @@ except ImportError:
     import builtins as builtin
 
 from collections import deque
+import datetime
 import itertools
 from lazy import lazy
 import os
@@ -354,7 +355,9 @@ class Transaction(GraphItem):
     def flush(self, updated=False):
         if (updated or self.updated) and self._inline_adapters is not None and self.nextID > self._flushID:
             # exercise inline graph adapters
+            self._timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
             self._inline_adapters.update(self, self._flushID)
+            del self._timestamp
             self._flushID = self.nextID
 
     def reset(self):

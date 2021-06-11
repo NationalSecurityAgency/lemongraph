@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.0] - 2021-06-11
+
+- Breaking change in server - log commit timestamp into `last_modified` field for nodes and edges.
+
 ## [1.2.1] - 2021-05-17
 
 - Fixed bug on `MatchLGQL.reduce()` and `/lg/test` endpoint
