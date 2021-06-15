@@ -500,6 +500,12 @@ class Flow(object):
 
             for chain in self.txn.query(self.query_full, start=self.pos, scanner=scanner, snap=True):
                 rec[1:] = (x.ID for x in chain)
+                # stash current log position
+                p = rec[0]
+                try: # harvest the snapped beforeID
+                    rec[0] = chain[0].beforeID
+                except IndexError:
+                    pass
                 if limit:
                     # clone record - it will get reused
                     records.append(tuple(rec))
@@ -507,6 +513,8 @@ class Flow(object):
                 else:
                     # send any overflow into the records queue for later
                     self.queue.push(rec)
+                # restore current log position
+                rec[0] = p
 
             # holds the logID for the last entry that we processed, stash nextID
             self.pos = rec[0] + 1
