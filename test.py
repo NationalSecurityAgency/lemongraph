@@ -596,6 +596,7 @@ class Test_Endpoints(LocalServer):
         def bar(task, records):
             chains = []
             for n, in records:
+                self.assertTrue('foo' in n)
                 for i in 1,2,3:
                     chain = [
                         { 'ID': n['ID'] },
@@ -692,6 +693,8 @@ class Test_Endpoints(LocalServer):
                     elif not isinstance(result, dict):
                         raise ValueError(result)
                     progress = True
+                except AssertionError:
+                    raise
                 except Exception as e:
                     # log task exception
                     sys.stderr.write('!')
