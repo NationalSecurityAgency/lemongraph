@@ -367,8 +367,8 @@ class Transaction(GraphItem):
 
     def _commit(self):
         if self.updated:
-            self.lg_lite.ffwd(start=self._startID)
             self.flush(updated=True)
+            self.lg_lite.ffwd(start=self._startID)
             updates = self.nextID - self._startID
             err = lib.graph_txn_commit(self._txn)
             if err:
