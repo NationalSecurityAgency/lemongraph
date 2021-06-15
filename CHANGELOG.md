@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.0.1] - 2021-06-15
+
+- Fix bug where fields requested by lg_lite adapters might not actually get included.
+
 ## [2.0.0] - 2021-06-11
 
 - Breaking change in server - log commit timestamp into `last_modified` field for nodes and edges.
