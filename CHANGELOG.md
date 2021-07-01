@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.1.0] - 2021-07-01
+
+- Added feature to query language to allow streaming queries to trigger on any field value change.
+
 ## [2.0.1] - 2021-06-15
 
 - Fix bug where fields requested by lg_lite adapters might not actually get included.

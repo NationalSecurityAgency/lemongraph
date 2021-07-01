@@ -39,11 +39,13 @@ def load_data(txn):
 
 
 class TestGraph(unittest.TestCase):
+    serializer = Serializer.msgpack()
+
     # each test_foo() method is wrapped w/ setup/teardown around it, so each test has a fresh graph
     def setUp(self):
         fd, path = tempfile.mkstemp()
         os.close(fd)
-        self.g = Graph(path, nosync=True, nometasync=True)
+        self.g = Graph(path, nosync=True, nometasync=True, serialize_property_value=self.serializer)
 
     def tearDown(self):
         self.g.delete()
@@ -143,6 +145,53 @@ class TestGraph(unittest.TestCase):
             for _ in txn.query("n(type='foo')->e()-n()"):
                 chains += 1
             self.assertTrue(chains)
+
+    def test_query_streaming(self):
+        with self.g.transaction(write=True) as txn:
+            load_data(txn)
+
+        node1 = node(1)
+        with self.g.transaction(write=True) as txn:
+            n1 = txn.node(**node1)
+            n1['foo'] = 1
+
+        with self.g.transaction(write=True) as txn:
+            n1 = txn.node(**node1)
+            n1['foo'] = 2
+            n1['bar'] = 3
+            n1['foo'] = 4
+
+        with self.g.transaction(write=False) as txn:
+            # 'foo' is set 3 times
+            count = sum(1 for chain in txn.query('n(foo=*)', start=1))
+            self.assertEqual(count, 3)
+
+            # 'bar' is set once (and 'foo' was already set), and 'foo' is set once after that
+            count = sum(1 for chain in txn.query('n(foo=*,bar=*)', start=1))
+            self.assertEqual(count, 2)
+
+            # 'bar' is set once (and 'foo' was already set), and subsequent 'foo' update was within same txn
+            count = sum(1 for chain in txn.query('n(foo=*,bar=*)', start=1, snap=True))
+            self.assertEqual(count, 1)
+
+        with self.g.transaction(write=True) as txn:
+            n1 = txn.node(**node1)
+            n1['baz'] = { "a": { "aa": 1 } }
+            n1['baz'] = { "a": { "aa": 1, "bb": 2 } }
+            n1['baz'] = { "a": { "aa": 3, "bb": 2 } }
+
+        with self.g.transaction(write=False) as txn:
+            count = sum(1 for chain in txn.query('n(baz=*)', start=1))
+            self.assertEqual(count, 3)
+
+            count = sum(1 for chain in txn.query('n(baz.a=*)', start=1))
+            self.assertEqual(count, 3)
+
+            count = sum(1 for chain in txn.query('n(baz.a.aa=*)', start=1))
+            self.assertEqual(count, 2)
+
+            count = sum(1 for chain in txn.query('n(baz.a.bb=*)', start=1))
+            self.assertEqual(count, 1)
 
     def test_graph_props(self):
         with self.g.transaction(write=True) as txn:

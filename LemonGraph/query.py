@@ -8,6 +8,18 @@ from .MatchLGQL import MatchLGQL, MatchCTX, QueryCannotMatch, eval_test
 def noop_scanner(entry):
     pass
 
+class Once:
+    __slots__ = 'func', 'ret'
+
+    def __init__(self, func):
+        self.func = func
+
+    def __call__(self):
+        if self.func is not None:
+            self.ret = self.func()
+            self.func = None
+        return self.ret
+
 class Query(object):
     magic = {
         'N': {
@@ -199,20 +211,34 @@ class Query(object):
             except KeyError:
                 pass
 
+    def _update_seen(self, matches, seen, sk):
+        for m in matches:
+            seen.add(sk)
+            yield m
+
     def _streaming(self, txn, snap=False, **kwargs):
         self._gen_handlers()
         ctxs = {}
-        beforeID = None
+        beforeID = 1 if snap else None
+        seen = set() if snap else None
         for ID, target, tocs in self._starts(txn, **kwargs):
-            if snap:
+            if snap and ID >= beforeID:
                 beforeID = txn._snap(ID)
+                seen.clear()
             for p_idx, idx in tocs:
+                if snap:
+                    sk = target.ID, p_idx, idx
+                    if sk in seen:
+                        continue
                 p = self.patterns[p_idx]
                 try:
                     ctx = ctxs[p]
                 except KeyError:
                     ctx = ctxs[p] = MatchCTX(self.compiled[p_idx])
-                yield (p, ctx.matches(target, idx=idx, beforeID=beforeID))
+                matches = ctx.matches(target, idx=idx, beforeID=beforeID)
+                if snap:
+                    matches = self._update_seen(matches, seen, sk)
+                yield (p, matches)
 
     def _exec(self, pat_matches):
         for p, matches in pat_matches:
@@ -242,8 +268,9 @@ class Query(object):
                     yield (entry, unseen)
 
     def _scan_mutable(self, trigs, entry, seen, beforeID):
+        prev = Once(lambda: entry.clone(beforeID=beforeID))
         for test, tocs in iteritems(trigs):
-            if eval_test(entry, test) and not eval_test(entry.clone(beforeID=beforeID), test):
+            if eval_test(entry, test, prev=prev):
                 unseen = tocs - seen
                 if unseen:
                     seen |= unseen
@@ -254,6 +281,7 @@ class Query(object):
             triggers = trigs[entry.key]
         except KeyError:
             return
+        prev = Once(lambda: entry.parent.clone(beforeID=entry.ID))
         for test, tocs in iteritems(triggers):
-            if eval_test(entry.parent, test) and not eval_test(entry.parent.clone(beforeID=entry.ID), test):
+            if eval_test(entry.parent, test, prev=prev):
                 yield (entry.parent, tocs)

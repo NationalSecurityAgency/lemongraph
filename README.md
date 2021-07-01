@@ -235,7 +235,13 @@ Simple keys (consists entirely of 'word' characters, may not start w/ digit) may
 * string  - enclosed by quotes
 * boolean - case insensitive bareword 'true' or 'false'
 * null    - case insensitive bareword 'none' or 'null'
+* \* (literal asterisk)
+	* for streaming queries, detect change of key value
+	* for non-streaming queries, just test for key existance
+	* invalid inside a list
+	* invalid for `!=`
 
+ (not valid inside a list or for `!=`)
 ### Regular expression (`~`) (python flavored, in perl-style notation):
 * Evaluated using Python's `re` module
 * Formatted in Perl style, so we can add flags easily: `/pattern/flags`

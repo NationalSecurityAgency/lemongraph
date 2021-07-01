@@ -10,6 +10,7 @@ SQ = '(?:\'(?:[^\'\\\\]|\\\\[\'\"\\\\])*\')'
 DQ = '(?:\"(?:[^\"\\\\]|\\\\[\'\"\\\\])*\")'
 BW = '(?:(?:(?![0-9])\w)\w*)'
 
+WILD = re.compile(r'\*')
 STR = re.compile('(?:%s|%s)' % (DQ, SQ), re.UNICODE)
 WHITE = re.compile(r'\s+', re.UNICODE)
 KEY = re.compile(r'(?:%s|%s|%s)' % (BW, SQ, DQ), re.IGNORECASE|re.UNICODE)
@@ -39,7 +40,7 @@ RANGE = (STR, OCT, NUM, HEX)
 OP_NEXT_BEGIN = {
     ':'  : (TYPES, LIST_BEGIN),
     '!:' : (TYPES, LIST_BEGIN),
-    '='  : (STR, OCT, NUM, HEX, TRUE, FALSE, NULL, LIST_BEGIN),
+    '='  : (STR, OCT, NUM, HEX, TRUE, FALSE, NULL, LIST_BEGIN, WILD),
     '!=' : (STR, OCT, NUM, HEX, TRUE, FALSE, NULL, LIST_BEGIN),
     '~'  : (REGEX, LIST_BEGIN),
     '!~' : (REGEX, LIST_BEGIN),
@@ -119,6 +120,7 @@ TEST_EVAL = {
 
     # resolving the key already succeeded - that's all we need
     'exists' : lambda val, vals: True,
+    'any'    : lambda val, vals: True,
 
     # range operators are guaranteed to have exactly one value
     '>'      : lambda val, vals: val >  vals[0],
@@ -340,19 +342,19 @@ class MatchLGQL(object):
         raise self.syntax_error('unexpected sequence')
 
     def parse_list(self, op):
-        lst = deque()
+        lst = set()
         next = OP_NEXT_END[op]
         while self.pos < self.end:
             m, reg = self.token(*next)
             if reg is LIST_END:
-                return tuple(lst)
+                return tuple(sorted(lst))
             try:
-                lst.append(CLEAN_VAL[reg](m, m.group(0), self.cache))
+                lst.add(CLEAN_VAL[reg](m, m.group(0), self.cache))
             except ValueError as e:
                 raise self.syntax_error("bad value", pos=e.message)
             m, reg = self.token(COMMA, LIST_END)
             if reg is LIST_END:
-                return tuple(lst)
+                return tuple(sorted(lst))
 
         raise self.syntax_error('ran off end')
 
@@ -420,7 +422,12 @@ class MatchLGQL(object):
                     val = (CLEAN_VAL[reg](m, m.group(0), self.cache),)
                 except ValueError as e:
                     raise self.syntax_error("bad value", pos=e.message)
-            if '=' == op:
+                except KeyError:
+                    if reg is not WILD:
+                        raise
+            if reg is WILD:
+                matches.append((key, 'any'))
+            elif '=' == op:
                 matches.appendleft((key, op, val))
             else:
                 matches.append((key, op, val))
@@ -433,12 +440,16 @@ class MatchLGQL(object):
     def munge_obj(self, info):
         d = {}
         keys = set()
-        exists = set()
+        special = {}
+        any    = special['any']    = set()
+        exists = special['exists'] = set()
         tests_range = deque()
         for test in info['tests']:
-            if 'exists' == test[1]:
-                exists.add(test[0])
+            try:
+                special[test[1]].add(test[0])
                 continue
+            except KeyError:
+                pass
 
             keys.add(test[0])
             k = test[0:2]
@@ -449,7 +460,7 @@ class MatchLGQL(object):
                 continue
 
             try:
-                d[k] = merge(d[k], set(test[2]))
+                d[k] = merge(d[k], test[2])
             except KeyError:
                 d[k] = set(test[2])
 
@@ -490,12 +501,13 @@ class MatchLGQL(object):
 
         tests_by_type = defaultdict(deque)
         tests_by_type['ranges'] = ranges
+        tests_by_type['any'] = deque((key, 'any', ()) for key in any)
         tests_by_type['exists'] = deque((key, 'exists', ()) for key in exists)
         for key_op, vals in iteritems(d):
-            tests_by_type[key_op[1]].append(tuple(key_op) + (tuple(vals),))
+            tests_by_type[key_op[1]].append(key_op + (tuple(vals),))
 
         tests_new = deque()
-        for types in ('exists', ':', '!:', '=', '!=', 'ranges', '~', '!~'):
+        for types in ('any', 'exists', ':', '!:', '=', '!=', 'ranges', '~', '!~'):
             tests_new.extend(tests_by_type[types])
 
         # add type/value accelerator info
@@ -629,14 +641,45 @@ class MatchLGQL(object):
             })
         return ret[1:]
 
-def eval_test(obj, test):
+def differ(a, b):
+    t = type(a)
+    if t != type(b):
+        return True
+    if t is list:
+        if len(a) != len(b):
+            return True
+        for x, y in zip(sorted(a), sorted(b)):
+            if differ(x, y):
+                return True
+    elif t is dict:
+        if len(a) != len(b):
+            return True
+        for k,v in iteritems(a):
+            if k not in b or differ(v, b[k]):
+                return True
+    else:
+        return a != b
+    return False
+
+def eval_test(obj, test, prev=None):
     target = obj
     try:
         for k in test[0]:
             target = target[k]
-    except Exception:
+    except:
         return False
-    return TEST_EVAL[test[1]](target, test[2])
+    t = test[1]
+    if not TEST_EVAL[t](target, test[2]):
+        return False
+    elif prev is None:
+        return True
+    try:
+        prev = prev()
+        for k in test[0]:
+            prev = prev[k]
+    except:
+        return True
+    return differ(target, prev) if t == 'any' else not TEST_EVAL[t](prev, test[2])
 
 class MatchCTX(object):
     link = (None, 'next', 'prev')
