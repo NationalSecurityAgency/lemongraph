@@ -6,7 +6,7 @@ from collections import deque
 #   it must return a number that will be interpreted as edge weight/cost
 # else cost_field may be supplied to pull edge weight/cost from a named edge property, defaulting to cost_default
 # in all cases, the calculated edge weight/cost must be a non-negative number (floating point is fine)
-def shortest_path(source, target, directed=False, cost_field=None, cost_default=1, cost_cb=None):
+def shortest_path(source, target, directed=False, cost_field=None, cost_default=None, cost_cb=None):
     if target.ID is source.ID:
         return 0, (source,)
 

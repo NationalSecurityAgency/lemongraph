@@ -382,17 +382,17 @@ class TestAlgorithms(unittest.TestCase):
 
             expect_path = (n0, e0, n1, e1, n2)
 
-            res_path = n0.shortest_path(n2, directed=False)
+            res_path = n0.shortest_path(n2, cost_default=1, directed=False)
             self.assertEqual(
                 tuple(x.ID for x in expect_path),
                 tuple(x.ID for x in res_path))
 
-            res_path = n0.shortest_path(n2, directed=True)
+            res_path = n0.shortest_path(n2, cost_default=1, directed=True)
             self.assertEqual(
                 tuple(x.ID for x in expect_path),
                 tuple(x.ID for x in res_path))
 
-            fail = n2.shortest_path(n0, directed=True)
+            fail = n2.shortest_path(n0, cost_default=1, directed=True)
             self.assertEqual(fail, None)
 
     def test_sp2(self):
@@ -418,14 +418,14 @@ class TestAlgorithms(unittest.TestCase):
             e1b = txn.edge(type='foo', src=n1b, tgt=n2)
 
             # should transit upper path
-            self.assertPathEqual(n0.shortest_path(n2), (n0, e0a, n1a, e1a, n2))
+            self.assertPathEqual(n0.shortest_path(n2, cost_default=1), (n0, e0a, n1a, e1a, n2))
 
             # use cost to force it through lower path
             e1b['cost'] = 0.5
-            self.assertPathEqual(n0.shortest_path(n2, cost_field='cost'), (n0, e0b, n1b, e1b, n2))
+            self.assertPathEqual(n0.shortest_path(n2, cost_default=1, cost_field='cost'), (n0, e0b, n1b, e1b, n2))
 
             # use default cost to make it find the upper path again
-            self.assertPathEqual(n0.shortest_path(n2, cost_field='cost', cost_default=0.5), (n0, e0a, n1a, e1a, n2))
+            self.assertPathEqual(n0.shortest_path(n2, cost_default=0.5, cost_field='cost'), (n0, e0a, n1a, e1a, n2))
 
 
     def assertPathEqual(self, a, b):
@@ -608,6 +608,46 @@ class LocalServer(unittest.TestCase):
         pid, status = os.waitpid(self.server, 0)
         self.assertEqual(status, 0)
         shutil.rmtree(self.dir)
+
+class Test_Depth(LocalServer):
+    def test_depth(self):
+        client = self.client
+
+        # create a graph
+        code, headers, data = client.post('/graph')
+        self.assertEqual(code, 201)
+        graph = str(headers['location'])
+
+        N0 = { 'type': 'foo', 'value': 'foo' }
+        N1 = { 'type': 'foo', 'value': 'bar' }
+        N2 = { 'type': 'foo', 'value': 'baz' }
+
+        E0 = { 'type': 'foo', 'src': N0, 'tgt': N1, 'cost': 1 }
+        E1 = { 'type': 'foo', 'src': N1, 'tgt': N2, 'cost': 2 }
+
+        # add some data
+        code, headers, data = client.post(graph, json={
+            'nodes': [ N0, N1, N2 ],
+            'edges': [ E0, E1 ],
+        })
+
+        # check no depth is set
+        code, headers, data = client.get(graph)
+        for i in 0, 1, 2:
+            self.assertTrue('depth' not in data['nodes'][i])
+
+        # mark first node as seed to give it depth = 0
+        # depth should cascade to connected nodes
+        code, headers, data = client.post(graph, json={
+            'seed': True,
+            'nodes': [ N0 ],
+        })
+
+        # check depth cascaded properly
+        code, headers, data = client.get(graph)
+        self.assertEqual(data['nodes'][0]['depth'], 0)
+        self.assertEqual(data['nodes'][1]['depth'], 1)
+        self.assertEqual(data['nodes'][2]['depth'], 3)
 
 class Test_Endpoints(LocalServer):
     def test_lg_lite(self):

@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.0] - 2021-08-31
+
+- Breaking change in server:
+  - edges no longer have an initial implicit cost of 1.0
+  - therefore, depth calculations no longer cascade through edges with no explicitly assigned cost
+  - shortest path in algorithms.py no longer defaults to an edge cost of 1.0
+
 ## [2.1.0] - 2021-07-01
 
 - Added feature to query language to allow streaming queries to trigger on any field value change.

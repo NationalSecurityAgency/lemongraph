@@ -41,53 +41,56 @@ def usage(msg=None, fh=sys.stderr):
         print(msg, file=fh)
     sys.exit(1)
 
-def seed_depth0():
-    while True:
-        txn, entry = yield
-        # first checks stay w/in the entry - last has to instantiate the parent object
-        if entry.is_property and entry.key == 'seed' and entry.value and entry.is_node_property:
-            entry.parent['depth'] = 0
-
-def process_edge(txn, e, cost=1, inf=float('Inf')):
-    # grab latest versions of endpoints
-    src = txn.node(ID=e.srcID)
-    tgt = txn.node(ID=e.tgtID)
-    ds = src.get('depth', inf)
-    dt = tgt.get('depth', inf)
-    if ds + cost < dt:
-        tgt['depth'] = ds + cost
-    elif dt + cost < ds:
-        src['depth'] = dt + cost
-
-def apply_cost(txn, prop):
-    # cost value validity has already been enforced above
-    process_edge(txn, prop.parent, cost=prop.value)
-
-def cascade_depth(txn, prop):
-    # grab latest version of parent node
-    node = txn.node(ID=prop.parentID)
-    mindepth = prop.value + 1
-    for n2 in node.neighbors:
+def _neighbor_cost(n):
+    for e in n.outbound:
         try:
-            if n2['depth'] <= mindepth:
-                continue
-        except KeyError:
-            pass
-        n2['depth'] = mindepth
+            yield float(e['cost']), e.tgt
+        except (KeyError, TypeError):
+            continue
+    for e in n.inbound:
+        try:
+            yield float(e['cost']), e.src
+        except (KeyError, TypeError):
+            continue
 
-def update_depth_cost():
+def _seed(entry, parent):
+    if parent.is_node:
+        parent['depth'] = 0
+
+def _depth(entry, parent, inf=float('inf')):
+    if parent.is_node:
+        for cost, n in _neighbor_cost(parent):
+            if cost < 0:
+                continue
+            depth = entry.value + cost
+            if depth < n.get('depth', inf):
+                n['depth'] = depth
+
+def _cost(entry, parent, inf=float('inf')):
+    if parent.is_edge:
+        try:
+            cost = float(entry.value)
+        except TypeError:
+            return
+        src = parent.src
+        tgt = parent.tgt
+        ds = src.get('depth', inf)
+        dt = tgt.get('depth', inf)
+        if dt > ds + cost:
+            tgt['depth'] = ds + cost
+        elif ds > dt + cost:
+            src['depth'] = dt + cost
+
+def apply_seed_depth_cost():
+    jump={'seed':_seed, 'depth': _depth, 'cost':_cost}
     while True:
         txn, entry = yield
-        if entry.is_edge:
-            # grab newly added edges, and propagate depth
-            process_edge(txn, entry)
-        elif entry.is_property:
-            if entry.key == 'depth':
-                if entry.is_node_property:
-                    cascade_depth(txn, entry)
-            elif entry.key == 'cost':
-                if entry.is_edge_property:
-                    apply_cost(txn, entry)
+        if entry.is_property:
+            try:
+                handler = jump[entry.key]
+            except KeyError:
+                continue
+            handler(entry, entry.parent)
 
 def update_last_modified():
     while True:
@@ -186,7 +189,7 @@ def main():
 
     graph_opts = dict(
         serialize_property_value=Serializer.msgpack(),
-        adapters=Adapters(seed_depth0, update_depth_cost, update_last_modified),
+        adapters=Adapters(apply_seed_depth_cost, update_last_modified),
         nosync=nosync, nometasync=nometasync,
         )
 

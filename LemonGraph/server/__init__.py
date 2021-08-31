@@ -395,18 +395,6 @@ class _Input(Handler):
         except:
             raise HTTPError(409, "Bad edge: %s" % edge)
 
-        # handle edge costs, allowed range: [0.0, 1.0]
-        # silently drop bad values:
-        #  cost defaults to 1 when edge is created
-        #  once cost is assigned, value may not be increased, as
-        #   depth recalculation could (would?) cover the entire graph
-        try:
-            cost = props['cost']
-            if cost < 0 or cost > 1 or cost >= e['cost']:
-                del props['cost']
-        except KeyError:
-            pass
-
         e.update(props, merge=True)
         return e
 

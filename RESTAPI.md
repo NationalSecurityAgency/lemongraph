@@ -144,10 +144,11 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 		* __tgt__ (*node*)
 	* Nodes and edges will be created if nodes with __type__/__value__ or edges with __type__/__value__/__src__/__tgt__ do not already exist.
 	* Any supplied __ID__ fields are ignored.
-	* Any supplied __depth__ property on a node is silently ignored (use __seed__ flag to set node __depth__ = 0). Non-seed-node depths are calculated.
-	* Any supplied __cost__ property on an edge is silently ignored if either is true:
-		* __cost__ < 0 or __cost__ > 1
-		* __cost__ > target edge's current cost
+	* Any supplied __depth__ property on a node is silently dropped (use __seed__ flag to set node __depth__ = 0).
+	* If supplied, a non-negative numeric __cost__ property on an edge may be used in conjunction w/ a source or target node's __depth__  property to update the other node's __depth__ property.
+		* once set, node __depth__ may only be lowered - increasing edge cost can only affect newly created adjacent nodes
+		* reevaluated when a node/edge pair's __depth__ or __cost__ properties are updated
+		* edge direction is ignored
 	* Any otherwise reserved attributes will be ignored.
 	* Any other supplied node/edge attributes will be merged in.
 	* Returns object containing: __id__: *uuid*
@@ -212,10 +213,11 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 			* __ID__ (*uint*)
 	* Nodes and edges will be created if nodes with __type__/__value__ or edges with __type__/__value__/__src__/__tgt__ do not already exist.
 	* If creating a new graph, any supplied __ID__ fields are ignored.
-	* Any supplied __depth__ property on a node is silently ignored (use __seed__ flag to set node __depth__ = 0). Non-seed-node depths are calculated.
-	* Any supplied __cost__ property on an edge is silently ignored if either is true:
-		* __cost__ < 0 or __cost__ > 1
-		* __cost__ > target edge's current cost
+	* Any supplied __depth__ property on a node is silently dropped (use __seed__ flag to set node __depth__ = 0).
+	* If supplied, a non-negative numeric __cost__ property on an edge may be used in conjunction w/ a source or target node's __depth__  property to update the other node's __depth__ property.
+		* once set, node __depth__ may only be lowered - increasing edge cost can only affect newly created adjacent nodes
+		* reevaluated when a node/edge pair's __depth__ or __cost__ properties are updated
+		* edge direction is ignored
 	* Any otherwise reserved attributes will be ignored.
 	* Any other supplied node/edge attributes will be merged in.
 * __PUT__ - Upload binary graph
