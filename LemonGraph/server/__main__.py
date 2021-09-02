@@ -90,6 +90,8 @@ def apply_seed_depth_cost():
                 handler = jump[entry.key]
             except KeyError:
                 continue
+            if entry.parent is None:
+                continue
             handler(entry, entry.parent)
 
 def update_last_modified():

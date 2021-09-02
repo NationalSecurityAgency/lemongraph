@@ -1,5 +1,8 @@
 # Changelog
 
+## [3.0.1] - 2021-09-02
+- Fix bug introduced in 3.0.0 where 'seed', 'depth', or 'cost' keys present in job meta would cause a crash
+
 ## [3.0.0] - 2021-08-31
 
 - Breaking change in server:

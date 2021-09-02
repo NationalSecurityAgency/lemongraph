@@ -614,7 +614,7 @@ class Test_Depth(LocalServer):
         client = self.client
 
         # create a graph
-        code, headers, data = client.post('/graph')
+        code, headers, data = client.post('/graph', json={'meta': {'seed': 1, 'depth': 2, 'cost': 3}})
         self.assertEqual(code, 201)
         graph = str(headers['location'])
 
