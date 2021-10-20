@@ -35,6 +35,12 @@ INT = re.compile(r'^[1-9][0-9]*$')
 STRING = re.compile(r'^.+$')
 ADAPTER = re.compile(r'^[A-Z][A-Z0-9_]*$')
 
+try:
+    FileExistsError # Python 3
+except NameError:
+    class FileExistsError(OSError): # Python 2
+        pass
+
 def date_to_timestamp(s):
     dt = dateutil.parser.parse(s)
     # time.mktime expects local time
@@ -221,16 +227,19 @@ class Handler(HTTPMethods):
             return g
 
         kwargs.update(self.creds)
-        try:
-            return self.collection.graph(uuid, **kwargs)
-        except (IOError, OSError) as e:
-            if e.errno is errno.ENOENT:
-                raise HTTPError(404, "Graph %s does not exist" % uuid)
-            elif e.errno is errno.ENOSPC:
-                raise HTTPError(507, str(e))
-            info = sys.exc_info()
-            trace = ''.join(traceback.format_exception(*info))
-            raise HTTPError(500, "Backend graph for %s is inaccessible: %s" % (uuid, trace))
+        while True:
+            try:
+                return self.collection.graph(uuid, **kwargs)
+            except (IOError, OSError, FileExistsError) as e:
+                if e.errno == errno.EEXIST and uuid is None:
+                    continue
+                elif e.errno is errno.ENOENT:
+                    raise HTTPError(404, "Graph %s does not exist" % uuid)
+                elif e.errno is errno.ENOSPC:
+                    raise HTTPError(507, str(e))
+                info = sys.exc_info()
+                trace = ''.join(traceback.format_exception(*info))
+                raise HTTPError(500, "Backend graph for %s is inaccessible: %s" % (uuid, trace))
 
     def tmp_graph(self, uuid):
         fd, path = tempfile.mkstemp(dir=self.collection.dir, suffix=".db", prefix="tmp_%s_" % uuid)
@@ -482,8 +491,13 @@ class Graph_Root(_Input, _Streamy):
                 pass
 
     def post(self, _):
-        uuid = uuidgen()
-        return self._create(None, uuid)
+        while True:
+            uuid = uuidgen()
+            try:
+                return self._create(None, uuid)
+            except (OSError, FileExistsError) as e:
+                if e.errno != errno.EEXIST:
+                    raise
 
 class Graph_UUID(_Input, _Streamy):
     path = ('graph', UUID,)

@@ -1,7 +1,6 @@
 from __future__ import print_function
 from .. import Serializer, Adapters
 from ..collection import Collection
-from ..httpd import Graceful
 from . import Server
 from .. import syncd
 from ..uuidgen import setnode
@@ -9,7 +8,7 @@ from ..uuidgen import setnode
 import signal
 import sys
 import logging
-import os.path
+import os
 from getopt import GetoptError, gnu_getopt as getopt
 
 class LogHandler(logging.StreamHandler):
@@ -163,7 +162,7 @@ def main():
     except (KeyError, ValueError):
         usage()
 
-    all_logs = tuple("LemonGraph.%s" % x for x in ('proc', 'httpd', 'collection', 'server', 'syncd'))
+    all_logs = tuple("LemonGraph.%s" % x for x in ('proc', 'httpd', 'collection', 'server', 'syncd', 'sockd'))
     log_levels = dict( (k, default_level) for k in all_logs)
     for token in logspec.split(','):
         try:
@@ -202,27 +201,12 @@ def main():
 
     sd = syncd.Syncd(path)
 
-    def receiver():
-        signal.signal(signal.SIGHUP, signal.SIG_IGN)
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
-        signal.signal(signal.SIGTERM, signal.SIG_IGN)
-        return sd.receiver()
-
-    def receiver_spawned(pid):
-        syncd.pid = pid
-
-    setattr(receiver, 'spawned', receiver_spawned)
-    setattr(receiver, 'terminate', sd.shutdown)
-
-    # fire up syncd monitor thread
-    sd.monitor()
-
     kwargs = dict(
         collection_path=path,
         collection_syncd=sd,
         graph_opts=graph_opts,
         notls=notls,
-        extra_procs={'syncd': receiver },
+        extra_procs={'syncd': sd.receiver },
         host=ip,
         port=port,
         spawn=workers,
@@ -230,5 +214,15 @@ def main():
         buflen=buflen,
         )
     Server(**kwargs)
+
+    # close syncd pipe, allowing syncd child to exit
+    sd.shutdown()
+
+    # and wait for any extra_procs (syncd child) to terminate
+    try:
+        while True:
+            os.wait()
+    except:
+        pass
 
 main()

@@ -595,7 +595,10 @@ class LocalServer(unittest.TestCase):
 
         for i in range(0, 300, 5):
             if os.path.exists(self.sockpath):
-                return self.connect()
+                try:
+                    return self.connect()
+                except LemonGraph.httpc.RESTClient.error:
+                    pass
             time.sleep(0.05)
         raise FileNotFoundError(self.sockpath)
 
@@ -795,7 +798,7 @@ class Test_Endpoints(LocalServer):
 
                 # post result
                 code, headers, _ = client.post(task, json=result)
-                self.assertTrue(code in (200, 204))
+                self.assertIn(code, (200, 204))
 
                 # mark any errored tasks for immediate retry
                 code, headers, retry = client.post('/lg/task/%s' % jobID, json={

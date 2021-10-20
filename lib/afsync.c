@@ -15,6 +15,7 @@
 
 #include"avl.h"
 #include"afsync.h"
+#include"logging.h"
 #include"osal.h"
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -108,7 +109,7 @@ struct _shared_t {
 	time_t now, min, max, start;
 	avl_tree_t idx;
 	int syncs, dupes;
-	int mfd, sfd;
+	int sfd;
 };
 
 static inline void _afs_tick_thread(shared_t s){
@@ -116,12 +117,9 @@ static inline void _afs_tick_thread(shared_t s){
 	const msg_t end = s->end;
 	int active = 0, active2;
 	time_t now;
-	char msg[1024];
-	int len = 0, age, syncs, dupes, elapsed;
+	int age, syncs, dupes, elapsed;
 	const char *fmt = "backlog %d, syncs %d, dupes %d, age %ds, elapsed %ds";
 	struct timespec tick = { 0 };
-	int flags = fcntl(s->mfd, F_GETFD);
-	fcntl(s->mfd, F_SETFD, flags|O_NONBLOCK);
 	pthread_mutex_lock(s->mutex);
 	do{
 		active2 = s->active;
@@ -136,12 +134,8 @@ static inline void _afs_tick_thread(shared_t s){
 		dupes = s->dupes;
 		pthread_cond_signal(s->cond_tick);
 		pthread_mutex_unlock(s->mutex);
-		if(active || active2){
-			len = sprintf(msg, fmt, active2, syncs, dupes, age, elapsed);
-			int w = write(s->mfd, msg, len);
-			(void)w;
-			len = 0;
-		}
+		if(active || active2)
+			logmsg(LOG_INFO, fmt, active2, syncs, dupes, age, elapsed);
 		active = active2;
 		tick.tv_sec = now + 1;
 		pthread_mutex_lock(s->mutex);
@@ -149,11 +143,8 @@ static inline void _afs_tick_thread(shared_t s){
 			pthread_cond_timedwait(s->cond_tick, s->mutex, &tick);
 		}while(s->cursor && time(0) == now);
 	}while(s->cursor);
-	if(active2){
-		len = sprintf(msg, fmt, s->active, s->syncs, s->dupes, 0, now - s->start);
-		int w = write(s->mfd, msg, len);
-		(void)w;
-	}
+	if(active2)
+		logmsg(LOG_INFO, fmt, s->active, s->syncs, s->dupes, 0, now - s->start);
 	s->threads--;
 	pthread_cond_signal(s->cond_tick);
 	pthread_mutex_unlock(s->mutex);
@@ -247,7 +238,7 @@ static int _afs_id_cmp(void *a, void *b, void *data){
 }
 
 // fork and run this in a child process
-int afsync_receiver(char *dir, unsigned int threads, int sfd, int mfd){
+int afsync_receiver(char *dir, unsigned int threads, int sfd){
 	pthread_t thr;
 	int r, ret = 1;
 	unsigned int i;
@@ -281,8 +272,9 @@ int afsync_receiver(char *dir, unsigned int threads, int sfd, int mfd){
 		.min_delta = 15,
 		.max_delta = 5,
 		.sfd = sfd,
-		.mfd = mfd,
 	};
+
+	logmsg(LOG_INFO, "%u threads", threads);
 
 	// spawn ticker thread and wait for first tick
 	pthread_mutex_lock(&mutex);
@@ -396,6 +388,7 @@ error2:
 error1:
 	avl_free(idx);
 error0:
+	logmsg(LOG_INFO, "exit");
 	return ret;
 };
 

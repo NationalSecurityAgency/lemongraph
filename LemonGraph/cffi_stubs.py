@@ -269,13 +269,30 @@ size_t graph_get_mapsize(graph_t g);
 size_t graph_get_disksize(graph_t g);
 db_snapshot_t graph_snapshot_new(graph_t g, int compact);
 
-int afsync_receiver(char *dir, unsigned int threads, int sfd, int mfd);
+int afsync_receiver(char *dir, unsigned int threads, int sfd);
 int afsync_queue(int sfd, char *uuid);
 int afsync_unqueue(int sfd, char *uuid);
+
+int server(int *socks, size_t n, ssize_t workers, char **extras, size_t ecount, int level, int sockd_level);
+
+#define LG_WORKER_KEEPALIVE  ...
+#define LG_WORKER_EXIT ...
+
+typedef struct {
+	int sock, conn, family, type, proto;
+	char byte;
+} lg_worker_t;
+
+lg_worker_t *lg_worker_new(int sock);
+int lg_worker_accept(lg_worker_t *w);
+int lg_worker_finish(lg_worker_t *w, unsigned char flags);
+
+void lg_log_init(int level, char *name);
+void lg_log_msg(int level, char *fmt, ...);
 '''
 
 C_KEYWORDS = dict(
-    sources=['deps/lmdb/libraries/liblmdb/mdb.c', 'deps/lmdb/libraries/liblmdb/midl.c', 'lib/lemongraph.c', 'lib/db.c', 'lib/counter.c', 'lib/afsync.c', 'lib/avl.c'],
+    sources=['deps/lmdb/libraries/liblmdb/mdb.c', 'deps/lmdb/libraries/liblmdb/midl.c', 'lib/lemongraph.c', 'lib/db.c', 'lib/counter.c', 'lib/afsync.c', 'lib/avl.c', 'lib/list.c', 'lib/xfd.c', 'lib/server.c', 'lib/logging.c'],
     include_dirs=['lib','deps/lmdb/libraries/liblmdb'],
     libraries=['z'],
 )

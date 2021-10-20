@@ -14,7 +14,7 @@ import time
 import traceback
 import zlib
 
-from . import lib, wire
+from . import ffi, lib, wire
 
 try:
     import ujson
@@ -26,19 +26,6 @@ except ImportError:
     def json_encode(x):
         return json.dumps(x, separators=(',', ':'), ensure_ascii=False)
     json_decode = lambda x: json.loads(wire.decode(x))
-
-try:
-    s = socket.socket()
-    s.detach
-    def close_socket(sock):
-        fd = sock.detach()
-        return os.close(fd)
-except AttributeError:
-    def close_socket(sock):
-        return sock.close()
-    pass
-finally:
-    close_socket(s)
 
 # pypi
 from lazy import lazy
@@ -90,11 +77,6 @@ class HTTPError(Exception):
 
     def __str__(self):
         return "%d: %s" % (self.code, self.message)
-
-
-class Graceful(Exception):
-    def __init__(self, reload=False):
-        self.reload = reload
 
 
 class HTTPMethods(object):
@@ -225,48 +207,9 @@ class Chunks(object):
         if pos:
             yield chunk(pos)
 
-# because every multiprocessing.Process().start() very helpfully
-# does a waitpid(WNOHANG) across all known children, and I want
-# to use os.wait() to catch exiting children
-class Process(object):
-    def __init__(self, func, terminate=None, close_fds=()):
-        sys.stdout.flush()
-        sys.stderr.flush()
-        self.terminate = self.default_terminate if terminate is None else terminate
-        self.pid = os.fork()
-        if self.pid == 0:
-            try:
-                for fd in close_fds:
-                    os.close(fd)
-                code = 1
-                code = func() or 0
-            finally:
-                sys.stdout.flush()
-                sys.stderr.flush()
-                os._exit(code)
-        try:
-            func.spawned(self.pid)
-        except AttributeError:
-            pass
-
-    def default_terminate(self, sig=signal.SIGTERM):
-        os.kill(self.pid, sig)
-
 
 class Service(object):
     def __init__(self, handlers=None, spawn=1, maxreqs=500, sock=None, host=None, port=None, timeout=10, extra_procs=None, buflen=1048576):
-        if not spawn:
-            spawn = multiprocessing.cpu_count()
-        elif spawn < 0:
-            spawn = -spawn * multiprocessing.cpu_count()
-
-        self.spawn = spawn
-        self.maxreqs = maxreqs
-
-        self.chunks = Chunks(bs=buflen)
-
-        self.pr, self.pw = os.pipe()
-
         if sock is None:
             if not host:
                 host = '127.0.0.1'
@@ -277,7 +220,7 @@ class Service(object):
                 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 sock.bind(host)
             else: # assume ip or resolvable local hostname
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock = socket.socket(socket.AF_INET6 if ':' in host else socket.AF_INET, socket.SOCK_STREAM)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, True)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
@@ -290,14 +233,15 @@ class Service(object):
                     sock.bind(host)
 
         sock.listen(socket.SOMAXCONN)
-        sock.setblocking(0)
-        self.sock = sock
+        self.spawn = spawn
+        self.maxreqs = maxreqs
+        self.chunks = Chunks(bs=buflen)
+        self.socks = [sock]
         self.timeout = timeout
-
         self.extra_procs = extra_procs or {}
-
         self.handlers = handlers or ()
         self.root = Step()
+
         for h in self.handlers:
             cursor = self.root
             for p in h.path:
@@ -312,135 +256,42 @@ class Service(object):
                 raise AttributeError("Duplicate %s handlers for endpoint: %s" % (m.upper(), repr(h.path)))
 
     def run(self):
-        def _halt(sig, frame):
-            try:
-                self.sock.shutdown(socket.SHUT_RDWR)
-            except:
-                pass
-            close_socket(self.sock)
-            raise Graceful()
-
-#        def _reload(sig, frame):
-#            raise Graceful(True)
-
-        signal.signal(signal.SIGTERM, _halt)
-        signal.signal(signal.SIGINT,  _halt)
-#        signal.signal(signal.SIGHUP,  _reload)
-
-        procs = {}
-        addr = self.sock.getsockname()
-        if isinstance(addr, tuple):
-            addr = ':'.join(str(a) for a in addr)
-        elif not isinstance(addr, type('')):
-            addr = addr.decode().replace('\x00','@')
-        log_proc.info("+master(%d): listening on %s", os.getpid(), addr)
-
-        def spawn(label, target):
-            try:
-                target, terminate = target
-            except:
-                terminate = getattr(target, 'terminate', None)
-            proc = Process(target, terminate=terminate, close_fds=[self.pw])
-            procs[proc.pid] = (proc, label, (target, terminate))
-            log_proc.info("+%s(%d): spawned", label, proc.pid)
-
+        extras = dict(enumerate(self.extra_procs.values(), start=1))
+        labels = tuple(x.encode() for x in self.extra_procs)
+        socks = ffi.new('int[]', [s.fileno() for s in self.socks])
+        proc = logging.getLogger('LemonGraph.proc')
+        sockd = logging.getLogger('LemonGraph.sockd')
+        code = lib.server(socks, len(socks), (self.spawn or -1), tuple(ffi.from_buffer(x) for x in labels), len(labels), proc.level, sockd.level)
+        if not code:
+            return
         try:
-            while len(procs) < self.spawn:
-                spawn("worker", self.safe_worker)
-
-            for label, target in self.extra_procs.items():
-                spawn(label, target)
-
-            while True:
-                pid, status = os.wait()
-                if pid > 0:
-                    proc, label, target = procs.pop(pid)
-                    if status == 0:
-                        log_proc.info("-%s(%d): exit: %d", label, pid, status)
-                    else:
-                        log_proc.warning("-%s(%d): exit: %d", label, pid, status)
-                    spawn(label, target)
-
-        except Graceful:
-            log_proc.info("Waiting for subprocesses to finish: %s", sorted(procs.keys()))
-            for proc, label, target in procs.values():
-                try:
-                    proc.terminate()
-                except OSError:
-                    pass
-            os.close(self.pw)
-            while procs:
-                try:
-                    pid, status = os.wait()
-                except OSError:
-                    break
-                proc, label, target = procs.pop(pid)
-                if status == 0:
-                    log_proc.info("-%s(%d): exit: %d", label, pid, status)
-                else:
-                    log_proc.warning("-%s(%d): exit: %d", label, pid, status)
+            if code < 0:
+                self.worker(socks[0])
+            else:
+                extras[code]()
         finally:
-            log_proc.info("-master(%d): exit: 0", os.getpid())
+            os._exit(0)
 
-    def safe_worker(self):
-        signal.signal(signal.SIGHUP, signal.SIG_IGN)
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
-        signal.signal(signal.SIGTERM, signal.SIG_IGN)
-        try:
-            return self.worker()
-        except Graceful:
-#            if e.reload:
-#                log_proc.info("*master(%d): re-exec!", os.getpid())
-#                log_proc.warn(repr(cmd))
-                #if __package__ is not None:
-                    #sys.argv[0] = '-m%s' % __loader__.name
-                #os.execl(sys.executable, sys.executable, *sys.argv)
-            pass
-        finally:
-            for h in self.handlers:
-                h.close()
-
-    def worker(self):
-        sock_fd = self.sock.fileno()
-        pipe_fd = self.pr
-
-        ifds = set()
-        ifds.add(pipe_fd)
-        while self.maxreqs:
-            ifds.add(sock_fd)
-            fds, _, _ = select.select(ifds, [], [], 1000)
-            if pipe_fd in fds:
-                raise Graceful
-            if sock_fd not in fds:
+    def worker(self, wsock):
+        w = lib.lg_worker_new(wsock)
+        byte = ffi.buffer(ffi.addressof(w, 'byte'), 1)
+        go = True
+        while go:
+            r = lib.lg_worker_accept(w)
+            if 0 == r:
+                return
+            elif -1 == r:
                 continue
-            try:
-                conn, addr = self.sock.accept()
-            except:
-                continue
-
+            conn = BufferedSocket(socket.fromfd(w.conn, w.family, w.type, w.proto), byte[:])
+            addr = conn.getpeername() or ('UNIX', 0)
             log.debug('client %s:%d: connected', *addr)
-            conn_fd = conn.fileno()
-            ifds.remove(sock_fd)
-            ifds.add(conn_fd)
-            self.maxreqs -= 1
             try:
-                while True:
-                    # fixme - perhaps this should have a timeout?
-                    fds, _, _ = select.select(ifds, [], [])
-                    if pipe_fd in fds:
-                        self.maxreqs = 0
-                        ifds.remove(pipe_fd)
-                        if conn_fd not in fds:
-                            raise Disconnected('server shutdown', level='debug')
-                    elif conn_fd not in fds:
-                        continue
+                while go:
+                    self.maxreqs -= 1
                     res = Response(conn)
                     try:
                         try:
-                            req = Request(conn, timeout=self.timeout)
-                            # hmm - it may not make sense to allow pipelining by default - look for magic header
-                            if 'HTTP/1.1' == req.version and ('x-please-pipeline' not in req.headers or self.maxreqs == 0):
-                                res.headers.set('Connection', 'close')
+                            req = Request(conn, res, timeout=self.timeout)
                             self.process(req, res)
                         except HTTPError as e:
                             if e.code >= 500:
@@ -452,22 +303,26 @@ class Service(object):
                         pass
                     ended = time.time()
                     log.debug('response/finished ms: %d/%d', res.delay_ms, int((ended - res.start) * 1000))
-                    if 'HTTP/1.1' != req.version:
-                        raise Disconnected('not HTTP/1.1', level='debug')
-                    elif res.headers.contains('Connection', 'close'):
-                        raise Disconnected('handler closed', level='debug')
+                    code = keepalive = 'HTTP/1.1' == req.version and not res.headers.contains('Connection', 'close')
+                    if keepalive and conn:
+                        continue
+                    go = self.maxreqs > 0
+                    if not go:
+                        code |= 2
+                    lib.lg_worker_finish(w, code)
+                    break
             except Disconnected as e:
-                pass
+                lib.lg_worker_finish(w, 0)
             except socket.timeout:
                 log.warning('client %s:%d: timed out', *addr)
+                lib.lg_worker_finish(w, 0)
             except Exception as e:
                 info = sys.exc_info()
                 trace = ''.join(traceback.format_exception(*info))
                 log.error('Unhandled exception: %s', trace)
-                sys.exit(1)
+                os._exit(1)
             finally:
-                ifds.remove(conn_fd)
-                close_socket(conn)
+                conn.close()
                 log.debug('client %s:%d: finished', *addr)
 
     def process(self, req, res):
@@ -545,6 +400,13 @@ class Service(object):
         # no chunks - send empty response
         return self._fixed(b'')
 
+    def __del__(self):
+        try:
+            for sock in self.socks:
+                sock.close()
+        except AttributeError:
+            pass
+
 
 class Response(object):
     codes = {
@@ -561,6 +423,7 @@ class Response(object):
         500: 'Internal Server Error',
         502: 'Bad Gateway',
         503: 'Service Unavailable',
+        505: 'HTTP Version Not Supported',
         507: 'Insufficient Storage',
     }
 
@@ -573,6 +436,7 @@ class Response(object):
         self.sock = sock
         self.begun = False
         self.message = None
+        self.version = 'HTTP/1.0'
         self.headers = Headers()
         self.start = time.time()
 
@@ -587,7 +451,7 @@ class Response(object):
         self.begun = time.time()
         self.delay_ms = int((self.begun - self.start) * 1000)
         self.headers.set('x-delay-ms', self.delay_ms)
-        self.send('HTTP/1.1 %d %s\r\n' % (self.code, self.codes[self.code]))
+        self.send('%s %d %s\r\n' % (self.version, self.code, self.codes[self.code]))
         self.send(str(self.headers))
 
     def error(self, code, message, *headers):
@@ -637,19 +501,97 @@ class Response(object):
         return json_encode(doc)
 
 
+class BufferedSocket(object):
+    class EOF(Exception):
+        pass
+
+    def __init__(self, sock, *data):
+        self.sock = sock
+        self.chunks = deque(bytes(d) for d in data)
+        self.size = sum(len(d) for d in data)
+
+    def _chunks(self, bs):
+        while self.size:
+            chunk = self.chunks.popleft()
+            self.size -= len(chunk)
+            yield chunk
+        while bs:
+            chunk = self.recv(bs)
+            if not chunk:
+                raise self.EOF
+            yield chunk
+
+    def _readline(self, eol=b'\n', bs=1024):
+        for chunk in self._chunks(bs):
+            i = chunk.find(eol)
+            if -1 == i:
+                yield chunk
+                continue
+            i += 1
+            yield chunk[0:i]
+            rem = chunk[i:]
+            if rem:
+                self.chunks.appendleft(rem)
+                self.size += len(rem)
+            return
+
+    def readline(self, eol=b'\n', bs=1024):
+        return b''.join(self._readline(eol, bs))
+
+    def read(self, size):
+        if not size:
+            raise RuntimeError
+        ret = bytearray(size)
+        off = 0
+        for chunk in self._chunks(0):
+            clen = len(chunk)
+            if size >= clen:
+                ret[off:off+clen] = chunk
+                if size > clen:
+                    off += clen
+                    size -= clen
+                    continue
+            else: # size < clen
+                ret[off:off+size] = chunk[0:size]
+                self.chunks.appendleft(chunk[size:])
+                self.size += len(self.chunks[0])
+            return bytes(ret)
+        view = memoryview(ret)
+        while size:
+            v = view[-size:]
+            n = self.sock.recv_into(v, size)
+            if 0 == n:
+                raise self.EOF
+            size -= n
+        return bytes(ret)
+
+    if sys.version_info[0] < 3:
+        def __nonzero__(self):
+            return bool(self.size)
+    else:
+        def __bool__(self):
+            return bool(self.size)
+
+    def __dir__(self):
+        return dir(self.sock) + ('read', 'readline')
+
+    def __getattr__(self, attr):
+        return getattr(self.sock, attr)
+
+
 class Request(object):
     req = re.compile('^(' + '|'.join(HTTPMethods.all_methods) + r') (.+?)(?: (HTTP/[0-9.]+))?(\r?\n)$')
     hsplit = re.compile(r':\s*')
 
-    def __init__(self, sock, timeout=10):
+    def __init__(self, sock, response, timeout=10):
         self.sock = sock
-        self.fh = sock.makefile('b')
         self.headers = Headers()
         self.timeout = timeout
         self.method = None
         self.uri = None
         self.version = None
         self.path = None
+        self.response = response
 
         self._load_request_headers()
 
@@ -689,17 +631,21 @@ class Request(object):
     def _load_request_headers(self):
         deadline = time.time() + self.timeout
         self.sock.settimeout(self.timeout)
-        line = wire.decode(self.fh.readline())
-        if len(line) == 0:
-            raise Disconnected('no request', level='debug')
+        try:
+            line = wire.decode(self.sock.readline())
+        except BufferedSocket.EOF:
+            raise Disconnected('bad request') if self.sock else Disconnected('no request', level='debug')
 
         m = self.req.match(line)
         try:
             self.method = m.group(1)
         except AttributeError:
-            raise Disconnected('bad request: ' + line)
+            raise Disconnected('bad request: ' + repr(line))
         self.uri = m.group(2)
         self.version = m.group(3) or 'HTTP/1.0'
+        if self.version not in ('HTTP/1.0', 'HTTP/1.1'):
+            raise HTTPError(505, self.version)
+        self.response.version = self.version
         parts = urlsplit(self.uri)
         self.path = parts.path
         self.components = tuple(x for x in self.path.split('/') if x)
@@ -712,13 +658,16 @@ class Request(object):
             if now >= deadline:
                 raise socket.timeout()
             self.sock.settimeout(deadline - now)
-            line = wire.decode(self.fh.readline())
-            if len(line) < 2 or '\r\n' != line[-2:]:
-                raise Disconnected('bad header line: ' + line)
-            elif len(line) == 2:
+            try:
+                line = wire.decode(self.sock.readline())
+            except BufferedSocket.EOF:
+                raise Disconnected('bad request')
+            if line == '\r\n':
                 # done parsing headers
                 self.sock.settimeout(None)
                 return
+            elif '\r\n' != line[-2:]:
+                raise Disconnected('bad header line: ' + line)
             try:
                 h, v = self.hsplit.split(line[0:-2], maxsplit=1)
             except ValueError:
@@ -727,12 +676,16 @@ class Request(object):
 
     def _body_chunked(self):
         while True:
-            h = self.fh.readline()
+            try:
+                h = self.sock.readline()
+            except BufferedSocket.EOF:
+                raise Disconnected('bad chunk header')
             if len(h) < 3 or h[-2:] != b'\r\n':
                 raise Disconnected('bad chunk header')
             chunklen = int(h.rstrip(), base=16) + 2
-            chunk = self.fh.read(chunklen)
-            if len(chunk) != chunklen:
+            try:
+                chunk = self.sock.read(chunklen)
+            except BufferedSocket.EOF:
                 raise Disconnected('short data chunk')
             if chunklen > 2:
                 yield chunk[0:-2]
@@ -742,8 +695,9 @@ class Request(object):
     def _body_raw(self, bytes, buflen=32768):
         while bytes > 0:
             r = buflen if bytes > buflen else bytes
-            x = self.fh.read(r)
-            if len(x) == 0:
+            try:
+                x = self.sock.read(r)
+            except BufferedSocket.EOF:
                 raise Disconnected('early eof')
             bytes -= len(x)
             yield x

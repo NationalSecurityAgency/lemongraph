@@ -176,6 +176,10 @@ Run the REST service (use `-h` to list options):
 
 It runs:
 * one master process responsible for [re]spawning and killing child processes
+* one socket pool process responsible for:
+	* accepting new connections
+	* monitoring idle connections
+	* distributing active connections to worker processes
 * one sync process responsible for sync-ing graphs to disk
 	* wakes once a second, sync-ing updated graphs that either:
 		* haven't been synced within the last 15 seconds, or

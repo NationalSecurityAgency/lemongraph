@@ -3,7 +3,7 @@ import os
 import sys
 import threading
 
-from . import lib, wire
+from . import ffi, lib, wire
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
@@ -29,8 +29,6 @@ class Syncd(object):
         self.halted = False
         self.dir = wire.encode(dir)
         self.threads = threads
-        # monitor pipe
-        self.mfds = os.pipe()
         # sync pipe
         self.sfds = os.pipe()
 
@@ -43,42 +41,21 @@ class Syncd(object):
     def close(self):
         if not self.closed:
             self.shutdown()
-            os.close(self.mfds[0]);
             self.closed = True
 
     def shutdown(self):
         if not self.halted:
-            os.close(self.mfds[1]);
             os.close(self.sfds[1]);
             os.close(self.sfds[0]);
             self.halted = True
 
     # fork and run this
     def receiver(self):
-        # close read end of monitor pipe
-        os.close(self.mfds[0])
+        name = b'syncd'
+        lib.lg_log_init(log.level, ffi.from_buffer(name))
         # close write end of sync pipe
         os.close(self.sfds[1])
         try:
-            return lib.afsync_receiver(self.dir, self.threads, self.sfds[0], self.mfds[1])
+            return lib.afsync_receiver(self.dir, self.threads, self.sfds[0])
         finally:
             os.close(self.sfds[0])
-            os.close(self.mfds[1])
-
-    def _monitor(self):
-        rfd = self.mfds[0]
-        try:
-            while True:
-                msg = os.read(rfd, 1024)
-                if not len(msg):
-                    break
-                log.info(msg.decode())
-        except OSError:
-            pass
-        finally:
-            self.close()
-
-    def monitor(self):
-        t = threading.Thread(target=self._monitor)
-        t.start()
-        return t

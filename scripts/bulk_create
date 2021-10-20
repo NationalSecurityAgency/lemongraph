@@ -4,6 +4,6 @@ let n=${1:-1000}
 time (
 for (( i=1; i<=n; i++ )); do
 	echo "${LG_SERVICE:-http://localhost:8000}/graph"
-done | xargs -P${CORES:-`grep -c ^processor /proc/cpuinfo`} -r -n50 curl -s -XPOST -H'x-please-pipeline: 1' -H'Content-Type: application/json' -d '{ "seed": true, "meta": { "roles": { "bulk_test": { "owner": true } } } }'
+done | xargs -P${CORES:-`grep -c ^processor /proc/cpuinfo`} -r -n50 curl -s -XPOST -H'Content-Type: application/json' -d '{ "seed": true, "meta": { "roles": { "bulk_test": { "owner": true } } } }'
 sync
 )

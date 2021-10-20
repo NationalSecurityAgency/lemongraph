@@ -25,7 +25,6 @@ class Adapter(object):
     async def run(self, active):
         print("spawn: %s" % self.name)
         try:
-#            async with aiohttp.ClientSession(connector=self.connector, headers={'x-please-pipeline':'1'}) as session:
             async with aiohttp.ClientSession(connector=self.connector) as session:
                 sleep = 0.05
                 while sleep < 0.5:
@@ -135,7 +134,6 @@ class Monitor(object):
             except KeyError:
                 self.adapters[inst.key] = [inst]
 
-#        async with aiohttp.ClientSession(connector=self.connector, headers={'x-please-pipeline':'1'}) as session:
         async with aiohttp.ClientSession(connector=self.connector) as session:
             while True:
                 try:

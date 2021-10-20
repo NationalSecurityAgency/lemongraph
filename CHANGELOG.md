@@ -1,5 +1,8 @@
 # Changelog
 
+## [3.1.0] - 2021-10-20
+- Reworked event loop, added support for HTTP/1.1 keepalive
+
 ## [3.0.1] - 2021-09-02
 - Fix bug introduced in 3.0.0 where 'seed', 'depth', or 'cost' keys present in job meta would cause a crash
 

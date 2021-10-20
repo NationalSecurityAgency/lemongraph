@@ -2014,9 +2014,13 @@ graph_t graph_open(const char * const path, const int flags, const int mode, con
 	int r;
 	graph_t g = malloc(sizeof(*g));
 	if(g){
-		// fixme? padsize hardcoded to 1gb
-		// explicitly disable DB_WRITEMAP - graph_txn_reset current depends on nested write txns
-		r = db_init((db_t)g, path, flags, mode, db_flags & ~DB_WRITEMAP, DBS, DB_INFO, 1<<30);
+		do{
+			// fixme? padsize hardcoded to 1gb
+			// explicitly disable DB_WRITEMAP - graph_txn_reset current depends on nested write txns
+			r = db_init((db_t)g, path, flags, mode, db_flags & ~DB_WRITEMAP, DBS, DB_INFO, 1<<30);
+
+			// fixme: endless retry on EINVAL - sometimes mdb_env_open gives us a busted env and txns don't work?
+		}while(EINVAL == r);
 		if(r){
 			free(g);
 			g = NULL;
