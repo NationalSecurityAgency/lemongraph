@@ -105,26 +105,27 @@ function makegraph(error, updates) {
 	const Filter = tags.get('filter') || 0
 	const Mark = tags.get('mark') || 0
 	for(let [k,v] of stash.entries()){
-		if(v.bits & Filter){
-			if(clicked.ID === k)
-				clicked.d = undefined
-			continue
-		}
+		v.filter = v.bits & Filter
 		v.mark = v.bits & Mark
 		if(v.bits & Node){
-			graph.nodes.push(v)
 			v.neighbors = {}
 			v.ln = {}
+			if(!v.filter)
+				graph.nodes.push(v)
 		}else if(v.bits & Edge){
-			graph.edges.push(v)
+			v.source = stash.get(v.data.srcID)
+			v.target = stash.get(v.data.tgtID)
+			v.filter |= v.source.filter | v.target.filter
+			if(!v.filter)
+				graph.edges.push(v)
 		}
 		if(clicked.ID === k)
-			clicked.d = v
+			clicked.d = v.filter ? undefined : v
 	}
 
 	for(let e of graph.edges){
-		let src = e.source = stash.get(e.data.srcID)
-		let tgt = e.target = stash.get(e.data.tgtID)
+		let src = e.source
+		let tgt = e.target
 		let tID = tgt.data.ID
 		let sID = src.data.ID
 		src.neighbors[tID] = tgt

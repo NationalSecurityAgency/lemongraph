@@ -1,5 +1,8 @@
 # Changelog
 
+## [3.2.1] - 2022-02-26
+- Fixed newly introduced bug with node filtering on /view/<uuid> endpoint
+
 ## [3.2.0] - 2022-02-26
 - Added -C server option to prevent static content caching (for testing purposes)
 - Added /lg/delta/<uuid> endpoint for pulling changes to a job graph
