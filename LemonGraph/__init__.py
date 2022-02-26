@@ -321,6 +321,7 @@ class CommitTransaction(EndTransaction):
 
 class Transaction(GraphItem):
     reserved = ()
+    ID = 0
 
     # only use a transaction from within the creating thread, unless txn is readonly and DB_NOTLS was specified
     def __init__(self, graph, write=True, beforeID=None, _parent=None):
@@ -606,10 +607,8 @@ class Transaction(GraphItem):
 
     def query(self, pattern, cache=None, **kwargs):
         q = Query((pattern,), cache=cache)
-        def just_chain():
-            for _, chain in q.execute(self, **kwargs):
-                yield chain
-        return just_chain()
+        for _, chain in q.execute(self, **kwargs):
+            yield chain
 
     def mquery(self, patterns, cache=None, **kwargs):
         q = Query(patterns, cache=cache)
@@ -776,16 +775,26 @@ class NativeProperty(object):
 class Deletion(NodeEdgeProperty):
     code = 'D'
     is_deletion = True
+    discoverable = ('ID', 'targetID')
 
     def delete(self):
         raise AttributeError("cannot delete")
 
     @builtin.property
-    def target(self):
+    def targetID(self):
         return self.next
+
+    @builtin.property
+    def target(self):
+        return self.txn.entry(self.next, beforeID=self.ID)
 
     def dump(self):
         return self.ID, (self.code, self.next)
+
+    def properties(self, handler=None):
+        if handler is None:
+            return iter(self.discoverable)
+        return (handler(NativeProperty(self, x)) for x in self.discoverable)
 
 
 class Node(NodeEdgeProperty):

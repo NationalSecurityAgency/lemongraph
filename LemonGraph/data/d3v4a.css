@@ -1,0 +1,36 @@
+.svg-container {
+  display: inline-block;
+  position: relative;
+  width: 100%;
+  padding-bottom: 100%; /* aspect ratio */
+  vertical-align: top;
+  overflow: hidden;
+}
+
+.svg-content-responsive {
+  display: inline-block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+}
+
+.info{
+  position: absolute;
+  visibility: hidden;
+  border: 1px solid #bbb;
+  padding: 3px 3px 3px 3px;
+  margin: 3px 3px 3px 3px;
+  background-clip: border-box;
+  background-color: white;
+}
+
+.json-container .json-number {
+  color: #aa1010;
+}
+.json-container .json-string {
+  color: #007b22;
+}
+.json-container .json-boolean {
+  color: #1010aa;
+}

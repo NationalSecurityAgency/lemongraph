@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.2.0] - 2022-02-26
+- Added -C server option to prevent static content caching (for testing purposes)
+- Added /lg/delta/<uuid> endpoint for pulling changes to a job graph
+- Added new default d3v4a style to /view/<uuid> endpoint that uses above job delta endpoint (pass `style=d3v4` to get previous)
+
 ## [3.1.0] - 2021-10-20
 - Reworked event loop, added support for HTTP/1.1 keepalive
 

@@ -34,6 +34,7 @@ def usage(msg=None, fh=sys.stderr):
     print('  -m                       enable nometasync for graph dbs', file=fh)
     print('  -n                       enable notls', file=fh)
     print('  -r                       rebuild index', file=fh)
+    print('  -C                       disable static resource cache', file=fh)
     print('  -h                       print this help and exit', file=fh)
     if msg is not None:
         print('', file=fh)
@@ -104,7 +105,7 @@ def update_last_modified():
 def main():
     levels = ('NOTSET', 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')
     try:
-        opts, args = getopt(sys.argv[1:], 'i:p:d:l:w:t:b:u:smnrh')
+        opts, args = getopt(sys.argv[1:], 'i:p:d:l:w:t:b:u:smnrCh')
     except GetoptError as err:
         usage(msg=str(err))
     if len(args) > 1:
@@ -119,6 +120,7 @@ def main():
     nometasync = False
     notls = False
     rebuild = False
+    cache = True
     path = 'graphs'
     workers = -1
     timeout = 3
@@ -155,6 +157,8 @@ def main():
                 buflen = int(a)
             elif o == '-u':
                 setnode(a)
+            elif o == '-C':
+                cache = False
             elif o == '-h':
                 usage(fh=sys.stdout)
             else:
@@ -212,6 +216,7 @@ def main():
         spawn=workers,
         timeout=timeout,
         buflen=buflen,
+        cache=cache,
         )
     Server(**kwargs)
 

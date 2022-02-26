@@ -12,12 +12,13 @@ import pkg_resources
 import re
 from six import iteritems, itervalues, string_types
 from six.moves.urllib_parse import parse_qs
+from six.moves import map
 import sys
 import tempfile
 import time
 import traceback
 
-from .. import Serializer, Node, Edge, QuerySyntaxError, merge_values
+from .. import Serializer, Node, Edge, Transaction, QuerySyntaxError, merge_values
 from ..collection import Collection, uuid_to_utc
 from ..MatchLGQL import MatchLGQL, QueryCannotMatch, QuerySyntaxError
 from ..lock import Lock
@@ -1047,7 +1048,9 @@ class Static(Handler):
         try:
             body = self.cache[resource]
         except KeyError:
-            body = self.cache[resource] = pkg_resources.resource_string(__name__, '../data/%s' % resource)
+            body = pkg_resources.resource_string(__name__, '../data/%s' % resource)
+            if static_cache:
+                self.cache[resource] = body
 
         extension = os.path.splitext(resource)[1]
         try:
@@ -1063,7 +1066,7 @@ class View_UUID(Static, _Status):
     def get(self, _, uuid):
         # check creds against index
         self.status(uuid)
-        return super(View_UUID, self).get(Static.path[0], self.param('style', 'd3v4') + '.html')
+        return super(View_UUID, self).get(Static.path[0], self.param('style', 'd3v4a') + '.html')
 
 class Favicon(Static):
     path = ('favicon.ico',)
@@ -1088,41 +1091,49 @@ class _Params(object):
 
     def merge_params(self, input={}, single=(), multi=()):
         output = {}
-        seen = set()
-        for field, validate in self._normalize(single):
-            if field in seen:
-                raise RuntimeError(field)
-            seen.add(field)
-            if field in self.params:
-                val, = self.params[field]
-            elif field in input:
+        # normalize rules to field => validator pairs
+        fv = dict(self._normalize(single))
+        mfv = dict(self._normalize(multi))
+        # blend single/multi, no collisions allowed
+        for k in mfv:
+            if k in fv:
+                raise RuntimeError(k)
+            fv[k] = mfv[k]
+        # grab all input fields
+        fields = set(self.params)
+        fields.update(input)
+        for field in fields:
+            t = output, field
+            try:
+                # look up validator
+                validate = fv[field]
+                multi = field in mfv
+            except KeyError:
+                # look up validator by prefix
+                try:
+                    pfx, label = field.rsplit('.', 1)
+                except ValueError:
+                    raise KeyError(field)
+                pfx += '.'
+                validate = fv[pfx]
+                if pfx not in output:
+                    output[pfx] = {}
+                t = output[pfx], label
+                multi = pfx in mfv
+
+            if field in input:
+                # try POST'd input first
                 val = input[field]
+                # silently promote scalars to lists, if expecting a multi
+                if multi and not isinstance(val, (tuple, list)):
+                    val = [val]
+            elif multi:
+                # fall back to query params (always an array)
+                val = self.params[field]
             else:
-                continue
-            output[field] = validate(val)
-
-        for field, validate in self._normalize(multi):
-            if field in seen:
-                raise RuntimeError(field)
-            seen.add(field)
-            if field in self.params:
-                vals = self.params[field]
-            elif field in input:
-                vals = input[field]
-                if not isinstance(vals, (tuple, list)):
-                    vals = [vals]
-            else:
-                continue
-            output[field] = tuple(validate(val) for val in vals)
-
-        for field in input:
-            if field not in seen:
-                raise KeyError(field)
-
-        for field in self.params:
-            if field not in seen:
-                raise KeyError(field)
-
+                val, = self.params[field]
+            # stash output
+            t[0][t[1]] = [validate(v) for v in val] if multi else validate(val)
         return output
 
 class LG(Handler):
@@ -1352,7 +1363,7 @@ class LG__Task_Job(Handler, _Params, _Streamy):
             with g.transaction(write=bool(update)) as txn:
                 tasks = txn.lg_lite.tasks(**filter)
                 if update:
-                    # yield tasks after appling update against each
+                    # yield tasks after applying update against each
                     tasks = ((t.update(**update),t)[1] for t in tasks)
                 tasks = (t.status for t in tasks)
                 for chunk in self.stream(tasks):
@@ -1426,6 +1437,131 @@ class LG__Task_Job_Task_get(_Params, _LG_Tasky):
         except KeyError:
             raise HTTPError(404, 'task not found: %s' % task_uuid)
 
+class LG__Delta_Job(Handler, _Params, _Streamy):
+    path = ('lg', 'delta', UUID)
+    offset = 2
+
+    def _tags(self, txn, qbits, **kwargs):
+        seen = kwargs.pop('seen',None) or ()
+        tags = {}
+        for q, chain in txn.mquery(qbits.keys(), **kwargs):
+            for e in chain:
+                if e.ID in seen:
+                    continue
+                try:
+                    tags[e.ID] |= qbits[q]
+                except KeyError:
+                    tags[e.ID] = qbits[q]
+        return tags
+
+    def _delta(self, uuid, txn, params):
+        header = {
+            'id': uuid,
+            'pos': txn.nextID,
+            'size': txn.graph.size,
+            'created': uuid_to_utc(uuid),
+        }
+
+        pos = params.get('pos', None) or 1
+        if pos >= txn.nextID:
+            yield header
+            return
+
+        # fixme - could add Deletion here
+        reserved = 'Node', 'Edge'
+        typebits = { Transaction: 0 }
+        typebits.update((eval(x), 1<<i) for i, x in enumerate(reserved))
+        tag_list = header['tags'] = list(reserved)
+
+        if 'tag.' in params:
+            qbits = {}
+            for tag, qs in sorted(params['tag.'].items()):
+                if tag in reserved:
+                    raise HTTPError(400, 'tag %s is reserved' % repr(tag))
+                # map query strings to bit combos
+                b = 1 << len(tag_list)
+                tag_list.append(tag)
+                for q in qs:
+                    try:
+                        qbits[q] |= b
+                    except KeyError:
+                        qbits[q] = b
+            cur_tags = self._tags(txn, qbits)
+        else:
+            cur_tags = {}
+        yield header
+
+        # step through graph log
+        seen = set()
+        for e in txn.scan(start=pos):
+            if e.is_property:
+                e = e.parent if e.parentID else txn
+            if e.ID in seen:
+                continue
+            seen.add(e.ID)
+            if not e.ID:
+                # emit updated graph meta
+                yield [0, e.as_dict()]
+                continue
+            # grab lastest version of node/edge (fixme - deletions)
+            e = e.clone(beforeID=0)
+            flags = typebits[type(e)] | cur_tags.pop(e.ID, 0)
+            # emit bitfield and properties for updated/new nodes/edges
+            yield [flags, e.as_dict()]
+
+        # done if there was no provided log position and tags
+        if pos == 1:
+            return
+        try:
+            qbits
+        except NameError:
+            return
+
+        # pull tags as of previous position, filtering out IDs already emitted
+        old_tags = self._tags(txn, qbits, seen=seen, stop=pos-1)
+
+        # delete unchanged tags from old_tags, add changed tags to old_tags
+        for ID, cbits in iteritems(cur_tags):
+            if cbits != old_tags.pop(ID, 0):
+                old_tags[ID] = cbits;
+
+        # emit bitfield and properties for graph-meta/nodes/edges that have different tags
+        for ID, obits in iteritems(old_tags):
+            e = txn.entry(ID)
+            flags = typebits[type(e)] | obits
+            yield [flags, e.as_dict()]
+
+    def _get_post(self, job_uuid):
+        data = self.input() or {}
+        params = self.merge_params(input=data,
+            single={'pos': cast.uint, 'style': str},
+            multi={'tag.': str, 'filter': str, 'mark': str})
+        # if present, merge old-style filter/mark params into tags structure
+        tags = None
+        for tag in ('filter', 'mark'):
+            try:
+                qs = params.pop(tag)
+            except KeyError:
+                continue
+            for q in qs:
+                if tags is None:
+                    try:
+                        tags = params['tag.']
+                    except KeyError:
+                        tags = params['tag.'] = {}
+                try:
+                    tags[tag].append(q)
+                except KeyError:
+                    tags[tag] = [q]
+        # emit graph deltas
+        with self.graph(job_uuid, create=False) as g:
+            with g.transaction(write=False) as txn:
+                for chunk in self.stream(self._delta(job_uuid, txn, params)):
+                    yield chunk
+
+    get  = _get_post
+    post = _get_post
+
 class MchLGQL(MatchLGQL):
     suppress_node_fields = Node_Reserved
     suppress_edge_fields = Edge_Reserved
@@ -1458,7 +1594,7 @@ class LG__Test(_Params, Handler):
     post = _get_post
 
 class Server(object):
-    def __init__(self, collection_path=None, collection_syncd=None, graph_opts=None, notls=False, **kwargs):
+    def __init__(self, collection_path=None, collection_syncd=None, graph_opts=None, notls=False, cache=True, **kwargs):
         classes = (
             Graph_Root,
             Graph_UUID,
@@ -1485,6 +1621,7 @@ class Server(object):
             LG__Task_Job_Task,
             LG__Task_Job_Task_post,
             LG__Task_Job_Task_get,
+            LG__Delta_Job,
             LG__Test,
         )
 
@@ -1493,6 +1630,9 @@ class Server(object):
 
         global collection
         collection = None
+
+        global static_cache
+        static_cache = bool(cache)
 
         handlers = tuple( H(collection_path=collection_path, collection_syncd=collection_syncd, graph_opts=graph_opts, notls=notls) for H in classes)
         kwargs['handlers'] = handlers

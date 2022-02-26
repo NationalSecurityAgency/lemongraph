@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<link rel="stylesheet" type="text/css" href="/static/jsonview.bundle.css">
+		<link rel="stylesheet" type="text/css" href="/static/d3v4a.css">
+		<script type="text/javascript" src="/static/jsonview.bundle.js"></script>
+		<script type="text/javascript" src="/static/d3.v4.min.js"></script>
+		<script type="text/javascript" src="/static/d3v4a.js"></script>
+	</head>
+	<body>
+		<svg width="100%" height="100%" onload="lg_graph('svg', '.info')"></svg>
+		<button class="export" onclick="export_svg()">Export SVG</button>
+		<button onclick="halt_sim()">Pause</button>
+		<button onclick="restart_sim()">Continue</button>
+		<div class="info"></div>
+	</body>
+</html>

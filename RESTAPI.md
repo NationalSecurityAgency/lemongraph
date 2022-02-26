@@ -36,6 +36,7 @@
 * [/lg/adapter/{*adapter*}/{*job_uuid*}](#lgadapteradapterjob_uuid)
 * [/lg/task/{*job_uuid*}](#lgtaskjob_uuid)
 * [/lg/task/{*job_uuid*}/{*task_uuid*}](#lgtaskjob_uuidtask_uuid)
+* [/lg/delta/{*job_uuid*}](#lgdeltajob_uuid)
 * [/lg/test](#lgtest)
 ---
 
@@ -372,13 +373,21 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 
 #### /view/{*uuid*}
 * __GET__ - Return basic view of graph as a D3 force graph
-	* Query parameters:
-		* [__user/role__](#graph-specific-endpoint-query-parameters)
+	* Query parameters - all are optional:
+		* __user/role__: [see above](#graph-specific-endpoint-query-parameters)
+		* __filter__: redact nodes/edges returned by one or more queries
+		* __mark__: highlight nodes/edges returned by one or more queries
+		* __style__: select view style - one of:
+			* `d3v4a`: default - uses [new lg delta endpoint](#lgdeltajob_uuid)
+			* `d3v4`: previous default d3 version 4 - uses [older d3 endpoint](#d3uuid)
+			* `d3`: ancient, same as d3v4, but using d3 version 3
 
 #### /d3/{*uuid*}
 * __GET__ - Stream D3-friendly json dump of graph
 	* Query parameters:
 		* [__user/role__](#graph-specific-endpoint-query-parameters)
+		* __filter__: redact nodes/edges returned by one or more queries
+		* __mark__: highlight nodes/edges returned by one or more queries
 
 ---
 
@@ -537,6 +546,17 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 				"adapters": dict
 			}
 			```
+
+#### /lg/delta/{*job_uuid*}
+* __GET__/__POST__ - fetch lists of new/updated/deleted nodes/edges, optionally since supplied log position
+	* Request headers:
+		* Accept: `application/json`, `application/x-msgpack`
+	* Query parameters/payload - all fields are optional:
+		* __pos__ - log position returned by prior call to this endpoint
+		* __filter__: tag nodes/edges returned by one or more queries as 'filter'
+		* __mark__: tag nodes/edges returned by one or more queries as 'mark'
+	* Notes:
+		* Once tracking a job's graph, do not alter __filter/mark__ parameters
 
 #### /lg/test
 * __GET__/__POST__
