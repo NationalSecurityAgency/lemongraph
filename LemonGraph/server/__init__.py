@@ -528,10 +528,7 @@ class Graph_UUID(_Input, _Streamy):
             try:
                 fh = os.fdopen(fd, 'wb')
                 cleanup.appendleft(fh.close)
-                while True:
-                    data = self.body.read(BLOCKSIZE)
-                    if len(data) == 0:
-                        break
+                for data in self.body:
                     fh.write(data)
                 cleanup.popleft()() # fh.close()
 #                with self.collection.graph(dbname, readonly=True, hook=False, create=False) as g:
@@ -541,7 +538,6 @@ class Graph_UUID(_Input, _Streamy):
                 cleanup.pop() # remove os.unlink(path)
                 cleanup.append(lambda: os.unlink('%s-lock' % target))
             except Exception as e:
-                os.unlink(name)
                 raise HTTPError(409, "Upload for %s failed: %s" % (uuid, repr(e)))
             finally:
                 for x in cleanup:
