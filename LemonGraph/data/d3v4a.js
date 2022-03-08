@@ -95,6 +95,8 @@ function makegraph(error, updates) {
 			v.data = data
 		}
 	}
+	if(simulation !== undefined)
+		simulation.stop()
 	svg.selectAll("*").remove()
 	pos = graph.pos = header.pos
 	graph.nodes = []
@@ -349,19 +351,38 @@ function lg_graph(svg_target, info_target){
 	const w = window,
 		d = document,
 		e = d.documentElement,
-		g = d.getElementsByTagName('body')[0],
-		width  = w.innerWidth  || e.clientWidth  || g.clientWidth,
-		height = w.innerHeight || e.clientHeight || g.clientHeight,
-		vbscale = 0.5
+		g = d.getElementsByTagName('body')[0]
 
 	info = document.querySelector(info_target)
+
 	svg = d3.select(svg_target)
 		.classed("svg-content-responsive", true)
-		.attr("preserveAspectRatio", "xMidYMid slice")
-		.attr("viewBox", -vbscale * width + " " + -vbscale * height + " " + 2 * vbscale * width + " " + 2 * vbscale * height)
-		.call(d3.zoom().scaleExtent([0.125, 8]).on("zoom", function(){ svg.attr("transform", d3.event.transform) }))
+		.attr("preserveAspectRatio", "xMidYMid meet")
+		.call(d3.zoom().scaleExtent([0.125, 8])
+		.on("zoom", function(){
+			svg.selectAll("g").attr("transform", d3.event.transform)
+		}))
 		.on("dblclick.zoom", null)
-		.append("g")
+
+	let qrt = null
+
+	function resize(){
+		let x = w.innerWidth  || e.clientWidth  || g.clientWidth
+		let y = w.innerHeight || e.clientHeight || g.clientHeight
+		let vb = -x/2 + " " + -y/2 + " " + x + " " + y
+		svg.attr("width", x)
+			.attr("height", y)
+			.attr("viewBox", vb)
+		qrt = null
+	}
+
+	function qresize(){
+		if(qrt === null)
+			qrt = setTimeout(resize, 33)
+	}
+
+	w.addEventListener('resize', qresize);
+	resize()
 
 	updategraph()
 }
