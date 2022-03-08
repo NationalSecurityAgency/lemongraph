@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.2.2] - 2022-03-08
+- Fixed binary graph upload endpoint
+- Cleaned up window resize on /view/<uuid> so it nolonger alters graph zoom
+- Fixed issue on /view/<uuid> where streaming graph updates could cause forcegraph physics to go bananas
+
 ## [3.2.1] - 2022-02-26
 - Fixed newly introduced bug with node filtering on /view/<uuid> endpoint
 
