@@ -1,5 +1,8 @@
 # Changelog
 
+## [3.2.3] - 2022-03-14
+- Allow time-based uuids to be passed to created_before/created_after parameters
+
 ## [3.2.2] - 2022-03-08
 - Fixed binary graph upload endpoint
 - Cleaned up window resize on /view/<uuid> so it nolonger alters graph zoom

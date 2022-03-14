@@ -19,7 +19,7 @@ import time
 import traceback
 
 from .. import Serializer, Node, Edge, Transaction, QuerySyntaxError, merge_values
-from ..collection import Collection, uuid_to_utc
+from ..collection import Collection, uuid_to_utc, uuid_to_utc_ts
 from ..MatchLGQL import MatchLGQL, QueryCannotMatch, QuerySyntaxError
 from ..lock import Lock
 from ..httpd import HTTPMethods, HTTPError, httpd, json_encode, json_decode
@@ -43,6 +43,10 @@ except NameError:
         pass
 
 def date_to_timestamp(s):
+    try:
+        return uuid_to_utc_ts(s)
+    except ValueError:
+        pass
     dt = dateutil.parser.parse(s)
     # time.mktime expects local time
     return time.mktime(dt.astimezone().timetuple()) + dt.microsecond / 1e6
