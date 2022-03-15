@@ -1,4 +1,4 @@
-let simulation, svg, info
+let simulation, svg, info, transform
 let pos = 0
 let poll = null
 let clicked = {}
@@ -169,6 +169,7 @@ function makegraph(error, updates) {
 	}
 	let link = svg.append("g")
 		.attr("class", "links")
+		.attr("transform", transform)
 		.selectAll("line")
 		.data(graph.edges)
 		.enter().append("path")
@@ -180,6 +181,7 @@ function makegraph(error, updates) {
 
 	let node = svg.append("g")
 		.attr("class", "nodes")
+		.attr("transform", transform)
 		.selectAll("circle")
 		.data(graph.nodes)
 		.enter().append("circle")
@@ -360,7 +362,7 @@ function lg_graph(svg_target, info_target){
 		.attr("preserveAspectRatio", "xMidYMid meet")
 		.call(d3.zoom().scaleExtent([0.125, 8])
 		.on("zoom", function(){
-			svg.selectAll("g").attr("transform", d3.event.transform)
+			svg.selectAll("g").attr("transform", transform=d3.event.transform)
 		}))
 		.on("dblclick.zoom", null)
 

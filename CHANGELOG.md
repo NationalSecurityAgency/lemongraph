@@ -1,5 +1,8 @@
 # Changelog
 
+## [3.2.6] - 2022-03-15
+- Reapply d3 transformation on graph refresh
+
 ## [3.2.5] - 2022-03-15
 - Updated Dockerfiles: alpine 3.12 => 3.14, debian 10 => 11
 
