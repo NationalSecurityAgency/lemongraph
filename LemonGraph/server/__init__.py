@@ -1441,8 +1441,7 @@ class LG__Delta_Job(Handler, _Params, _Streamy):
     path = ('lg', 'delta', UUID)
     offset = 2
 
-    def _tags(self, txn, qbits, **kwargs):
-        seen = kwargs.pop('seen',None) or ()
+    def _tags(self, txn, qbits, seen=(), **kwargs):
         tags = {}
         for q, chain in txn.mquery(qbits.keys(), **kwargs):
             for e in chain:
@@ -1494,7 +1493,7 @@ class LG__Delta_Job(Handler, _Params, _Streamy):
         # step through graph log
         seen = set()
         for e in txn.scan(start=pos):
-            if e.is_property:
+            while e.is_property:
                 e = e.parent if e.parentID else txn
             if e.ID in seen:
                 continue
@@ -1520,15 +1519,22 @@ class LG__Delta_Job(Handler, _Params, _Streamy):
         # pull tags as of previous position, filtering out IDs already emitted
         old_tags = self._tags(txn, qbits, seen=seen, stop=pos-1)
 
-        # delete unchanged tags from old_tags, add changed tags to old_tags
+        # collect the delta
+        delta_tags = {}
+
+        # remove cur_tags from old_tags, add new/differing tag bits to delta_tags
         for ID, cbits in iteritems(cur_tags):
             if cbits != old_tags.pop(ID, 0):
-                old_tags[ID] = cbits;
+                delta_tags[ID] = cbits;
+
+        # everything left in old_tags should be zeroed out
+        for ID in old_tags:
+            delta_tags[ID] = 0
 
         # emit bitfield and properties for graph-meta/nodes/edges that have different tags
-        for ID, obits in iteritems(old_tags):
+        for ID, bits in iteritems(delta_tags):
             e = txn.entry(ID)
-            flags = typebits[type(e)] | obits
+            flags = typebits[type(e)] | bits
             yield [flags, e.as_dict()]
 
     def _get_post(self, job_uuid):

@@ -1,5 +1,8 @@
 # Changelog
 
+## [3.2.4] - 2022-03-15
+- Fix logic bug on /lg/delta/<job> where marked/filtered nodes were not getting updated correctly
+
 ## [3.2.3] - 2022-03-14
 - Allow time-based uuids to be passed to created_before/created_after parameters
 
