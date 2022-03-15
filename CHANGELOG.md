@@ -1,5 +1,8 @@
 # Changelog
 
+## [3.2.5] - 2022-03-15
+- Updated Dockerfiles: alpine 3.12 => 3.14, debian 10 => 11
+
 ## [3.2.4] - 2022-03-15
 - Fix logic bug on /lg/delta/<job> where marked/filtered nodes were not getting updated correctly
 

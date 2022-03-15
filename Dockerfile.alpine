@@ -1,4 +1,4 @@
-FROM alpine:3.12 AS base
+FROM alpine:3.14 AS base
 
 RUN apk update && apk add --no-cache py3-cffi py3-setuptools py3-six
 
