@@ -108,6 +108,9 @@ class Handler(HTTPMethods):
         self.notls = notls
         self.graph_opts = {} if graph_opts is None else graph_opts
 
+    def __del__(self):
+        self.close()
+
     def close(self):
         global collection
         if collection is not None:

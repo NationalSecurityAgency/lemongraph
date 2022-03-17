@@ -270,6 +270,8 @@ class Service(object):
             else:
                 extras[code]()
         finally:
+            for h in self.handlers:
+                h.close()
             os._exit(0)
 
     def worker(self, wsock):
