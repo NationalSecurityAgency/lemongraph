@@ -1,5 +1,8 @@
 # Changelog
 
+## [3.2.7] - 2022-03-17
+- fix bug affecting streaming graph view introduced in 6865502b
+
 ## [3.2.6] - 2022-03-15
 - Reapply d3 transformation on graph refresh
 
