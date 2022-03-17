@@ -1494,7 +1494,10 @@ class LG__Delta_Job(Handler, _Params, _Streamy):
         seen = set()
         for e in txn.scan(start=pos):
             while e.is_property:
-                e = e.parent if e.parentID else txn
+                if not e.parentID:
+                    e = txn
+                    break
+                e = e.parent
             if e.ID in seen:
                 continue
             seen.add(e.ID)
