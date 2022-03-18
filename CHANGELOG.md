@@ -1,5 +1,8 @@
 # Changelog
 
+## [3.2.8] - 2022-03-18
+- properly close graph collection index on worker process exit
+
 ## [3.2.7] - 2022-03-17
 - fix bug affecting streaming graph view introduced in 6865502b
 
