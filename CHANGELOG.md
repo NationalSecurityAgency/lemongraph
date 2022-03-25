@@ -1,5 +1,9 @@
 # Changelog
 
+## [3.2.9] - 2022-03-25
+- merged Dockerfile.* into single Dockerfile
+- added __version__ attribute to LemonGraph, and /lg/status endpoint
+
 ## [3.2.8] - 2022-03-18
 - properly close graph collection index on worker process exit
 
