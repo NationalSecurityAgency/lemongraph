@@ -10,6 +10,9 @@ from setuptools.command.build_ext import build_ext
 from setuptools.command.install import install
 from setuptools.command.sdist import sdist
 
+with open(os.path.join(os.path.split(__file__)[0], 'LemonGraph', 'version.py')) as vf:
+	exec(vf.read(), locals())
+
 def fetch_external():
     try:
         return fetch_external.once
@@ -49,7 +52,7 @@ if __name__ == "__main__":
         maintainer='National Security Agency',
         maintainer_email='/dev/null',
         url='https://github.com/NationalSecurityAgency/lemongraph',
-        version='3.2.8',
+        version=VERSION,
         description='LemonGraph Database',
         packages=['LemonGraph', 'LemonGraph.server'],
         package_data={'LemonGraph': ['data/*']},

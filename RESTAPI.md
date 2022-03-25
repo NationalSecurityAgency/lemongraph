@@ -38,6 +38,7 @@
 * [/lg/task/{*job_uuid*}/{*task_uuid*}](#lgtaskjob_uuidtask_uuid)
 * [/lg/delta/{*job_uuid*}](#lgdeltajob_uuid)
 * [/lg/test](#lgtest)
+* [/lg/status](#lgstatus)
 ---
 
 #### Data Types
@@ -570,3 +571,13 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 				* required relationships between nodes/edges
 				* minimum required fields for each node/edge
 				* whether or not each node/edge would be included in query results
+
+#### /lg/status
+* __GET__
+	* Request headers:
+		* Accept: `application/json`, `application/x-msgpack`
+		* Content-Type: `application/json`, `application/x-msgpack`
+	* Notes:
+		* Returns object with keys:
+			* `version` (string)
+			* `uptime` (float, seconds)

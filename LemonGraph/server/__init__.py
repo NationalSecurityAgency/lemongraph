@@ -24,6 +24,7 @@ from ..MatchLGQL import MatchLGQL, QueryCannotMatch, QuerySyntaxError
 from ..lock import Lock
 from ..httpd import HTTPMethods, HTTPError, httpd, json_encode, json_decode
 from ..uuidgen import uuidgen
+from ..version import VERSION
 from .. import cast
 
 log = logging.getLogger(__name__)
@@ -1605,6 +1606,21 @@ class LG__Test(_Params, Handler):
     get  = _get_post
     post = _get_post
 
+class LG__Status(Handler):
+    path = 'lg', 'status'
+    offset = 2
+
+    boot = time.monotonic()
+
+    def get(self):
+        uptime = time.monotonic() - self.boot
+        uptime = int(1000 * uptime) / 1000
+        status = {
+            'version': VERSION,
+            'uptime': uptime,
+        }
+        return self.dumps(status, pretty=True)
+
 class Server(object):
     def __init__(self, collection_path=None, collection_syncd=None, graph_opts=None, notls=False, cache=True, **kwargs):
         classes = (
@@ -1635,6 +1651,7 @@ class Server(object):
             LG__Task_Job_Task_get,
             LG__Delta_Job,
             LG__Test,
+            LG__Status,
         )
 
         global lock

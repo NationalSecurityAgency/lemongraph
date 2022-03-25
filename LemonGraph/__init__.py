@@ -22,6 +22,7 @@ import os
 from six import iteritems, itervalues
 import sys
 
+from .version import VERSION as __version__
 from .callableiterable import CallableIterableMethod
 from .hooks import Hooks
 from .dirlist import dirlist
