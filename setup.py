@@ -6,9 +6,9 @@ import subprocess
 import sys
 
 from setuptools import setup
-from distutils.command.build import build
-from distutils.command.sdist import sdist
+from setuptools.command.build_ext import build_ext
 from setuptools.command.install import install
+from setuptools.command.sdist import sdist
 
 def fetch_external():
     try:
@@ -31,10 +31,10 @@ def wrap(**classes):
     return classes
 #    return dict((cls.__module__.split('.')[-1], Wrap(cls)) for cls in classes)
 
-cffi = ['cffi>=1.8.2,<1.13']
+cffi = ['cffi>=1.8.2,<1.16']
 reqs = cffi + [
     'lazy>=1.0,<1.5',
-    'msgpack>=0.6,<0.7',
+    'msgpack>=0.6,<1.1',
     'python-dateutil>=1.4,<2.9',
     'setuptools',
     'six',
@@ -56,4 +56,4 @@ if __name__ == "__main__":
         install_requires=reqs,
         setup_requires=cffi,
         cffi_modules=['LemonGraph/cffi_stubs.py:ffi'],
-        cmdclass=wrap(build=build, install=install, sdist=sdist))
+        cmdclass=wrap(build_ext=build_ext, install=install, sdist=sdist))
