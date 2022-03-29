@@ -1,5 +1,8 @@
 # Changelog
 
+## [3.2.10] - 2022-03-29
+- fix Dockerfile and .dockerignore for downstream integration
+
 ## [3.2.9] - 2022-03-25
 - merged Dockerfile.* into single Dockerfile
 - added __version__ attribute to LemonGraph, and /lg/status endpoint

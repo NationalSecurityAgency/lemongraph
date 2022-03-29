@@ -4,11 +4,11 @@
 #	fedora:35
 ARG IMAGE=alpine:3.15
 
-# populate if base image needs some initial configuration changes
-ARG CONFIGURE
-
 # build the base runtime image
 FROM ${IMAGE} AS runtime
+
+# populate if base image needs some initial configuration changes
+ARG CONFIGURE
 
 # optionally apply supplied configuration changes
 RUN [ -z "${CONFIGURE}" ] || (${CONFIGURE})
