@@ -527,7 +527,7 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 			* if list, task state must be one of provided, and will not be modified
 			* if dict, task state must be one of the keys, and will be set to the associated value
 			* if not provided, default behavior is to set an __active__ task to __done__
-			* __retry__ is a pseudo-state - it sets the state to __active__, __touch__ to __now() - 1__, and __timeout__ to __1__
+			* __retry__ is a pseudo-state - it sets the state to __active__, __touch__ to __now() - 0.1__, and __timeout__ to __0.1__
 		* __timeout__: assign new task timeout - use 0 to disable
 		* __details__: assign task details to supplied value
 		* __nodes__: list of node objects
