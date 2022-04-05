@@ -43,6 +43,11 @@ except NameError:
     class FileExistsError(OSError): # Python 2
         pass
 
+try:
+    now = time.monotonic
+except AttributeError:
+    now = time.time
+
 def date_to_timestamp(s):
     try:
         return uuid_to_utc_ts(s)
@@ -1610,11 +1615,11 @@ class LG__Status(Handler):
     path = 'lg', 'status'
     offset = 2
 
-    boot = time.monotonic()
+    boot = now()
 
     def get(self):
-        uptime = time.monotonic() - self.boot
-        uptime = int(1000 * uptime) / 1000
+        uptime = now() - self.boot
+        uptime = int(1000 * uptime) / 1000.0
         status = {
             'version': VERSION,
             'uptime': uptime,
