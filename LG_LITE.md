@@ -6,13 +6,13 @@ This aims to re-implement the core functionality of LemonGrenade with fewer movi
 
 * install LG reqs
 * run server:
-	* `python -mLemonGraph.server -s`
+	* `python3 -mLemonGraph.server -s`
 * run example adapters:
-	* `python examples/foo.py`
-	* `python examples/bar.py`
-	* `python examples/baz.py`
+	* `python3 examples/foo.py`
+	* `python3 examples/bar.py`
+	* `python3 examples/baz.py`
 * submit some example jobs:
-	* `python examples/submit.py 10`
+	* `python3 examples/submit.py 10`
 * see also:
     * [async_adapters.py](examples/async_adapters.py)
     * [async_submit.py](examples/async_submit.py)
