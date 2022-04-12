@@ -220,6 +220,7 @@ class MatchLGQL(object):
         self.best = None
         self.toc = {}
         self.required_filters = set()
+        self.n = 0
 
         # parse a node/edge
         info = self.parse_obj()
@@ -375,7 +376,8 @@ class MatchLGQL(object):
                     self.toc[normalized] = [info]
                 if alias != normalized:
                     self.required_filters.add(normalized)
-        self.toc[len(self.matches) + 1] = [info]
+        self.n += 1
+        self.toc[self.n] = [info]
         return self.parse_guts(info)
 
     def parse_guts(self, info):
