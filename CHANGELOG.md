@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.2.12] - 2022-04-12
+- fix node/edge indexing for queries having implicit nodes/edges
+
+## [3.2.11] - 2022-04-05
+- correct docs for tasks set to retry
+- update python -> python3 in docs
+- fix uptime on /lg/status for python2
+
 ## [3.2.10] - 2022-03-29
 - fix Dockerfile and .dockerignore for downstream integration
 
