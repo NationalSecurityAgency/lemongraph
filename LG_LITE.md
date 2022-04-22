@@ -1,6 +1,6 @@
 # LG Lite
 
-This aims to re-implement the core functionality of LemonGrenade with fewer moving parts.
+LG-Lite facilitates recursive batch job processing across multiple disparate systems. It implements the core functionality of LemonGrenade, but with fewer moving parts and reduced resource requirements.
 
 # Quickstart
 
@@ -26,7 +26,7 @@ LG Lite extends LemonGraph and continues its disposable-central-index theme - no
 
 * maintains individual jobs as graphs
 * maintains indexes of which adapters potentially have outstanding work
-* responsible for round-robin-ing through jobs, according to job priority
+* responsible for round-robin-ing adapter requests through jobs, according to job priority
 
 ## Jobs
 
