@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.3.0] - 2022-04-22
+- allow full task contents to be pulled via /lg/task/<job_uuid>
+- allow filtering by node/edge IDs on /lg/task/<job_uuid>
+- add node/edge count, enabled-ness, and priority to job info object in /lg/delta/<job_uuid> response
+
 ## [3.2.12] - 2022-04-12
 - fix node/edge indexing for queries having implicit nodes/edges
 

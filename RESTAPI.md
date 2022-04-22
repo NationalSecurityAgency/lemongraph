@@ -494,6 +494,12 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 		* __task__: if supplied, examine provided task uuid[s] only
 		* __state__: optionally filter by task states (__active__, __done__, or __error__)
 		* __adapter__: optionally filter by adapters
+		* __data__: optional boolean flag
+			* if true, include all task chains after each task
+			* if false, include no task chains in output (for use with __id__ parameter)
+		* __id__: optional list of node/edge IDs
+			* filter tasks to those referencing at least one supplied node/edge ID in at least one chain
+			* if __data__ is not specified, include only matching task chains in output
 		* __update__: optional dict containing settings to update on all matched tasks
 			```javascript
 			{

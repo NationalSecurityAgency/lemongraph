@@ -586,11 +586,18 @@ class Task(object):
         if kwargs:
             self.update(**kwargs)
 
-    def format(self):
+    def chains(self, ids=None):
         for rec in self.records:
-            it = iter(rec)
-            b4ID = next(it)
-            yield tuple(self.txn.entry(x, beforeID=b4ID).as_dict() for x in it)
+            chain = rec[1:]
+            if ids and ids.isdisjoint(chain):
+                continue
+            yield tuple(self.txn.entry(x, beforeID=rec[0]) for x in chain)
+
+    def format(self, chains=None):
+        if chains is None:
+            chains = self.chains()
+        for chain in chains:
+            yield tuple(x.as_dict() for x in chain)
 
     @property
     def status(self):

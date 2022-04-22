@@ -1211,6 +1211,23 @@ class LG_Config_Job_Adapter(LG_Config_Job):
                 txn.lg_lite.update_adapter(adapter, config)
 
 class _LG_Tasky(Handler, _Streamy):
+    @staticmethod
+    def task_info(task, ids=None, data=None):
+        chains = task.chains() if data else ()
+        if ids:
+            ids = set(ids)
+
+            # ensure at least one record has a requested node/edge ID
+            for chain in task.chains(ids=ids):
+                break
+            else:
+                return
+            if data is None:
+                # add matching records to output if 'data' flag was unspecified
+                chains = task.chains(ids=ids)
+        # emit task status object
+        return task.status, chains
+
     def stream_job_task(self, job_uuid, priority=None, meta=None, touch=False, **kwargs):
         with self.graph(job_uuid, create=False) as g:
             with g.transaction(write=True) as txn:
@@ -1354,31 +1371,35 @@ class LG__Task_Job_Task(Handler):
                 except KeyError:
                     raise HTTPError(404, 'task not found: %s' % task_uuid)
 
-class LG__Task_Job(Handler, _Params, _Streamy):
+class LG__Task_Job(_LG_Tasky, _Params):
     path = ('lg', 'task', UUID)
     offset = 2
     _xlate = dict(task="uuids", state="states", adapter="adapters")
 
+    def _streamtasks(self, txn, filter, update, ids, data):
+        for task in txn.lg_lite.tasks(**filter):
+            try:
+                status, chains = self.task_info(task, ids=ids, data=data)
+            except TypeError:
+                continue
+            if update:
+                task.update(**update)
+            yield status
+            for chain in task.format(chains):
+                yield chain
+
     def _get_post(self, job_uuid):
         data = self.input() or {}
         params = self.merge_params(input=data,
-            single={'update': dict},
-            multi=('state', 'adapter', 'task'))
-        filter = {}
-        for k, v in iteritems(self._xlate):
-            try:
-                filter[v] = params.pop(k)
-            except KeyError:
-                pass
+            single={'update': dict, 'data': cast.boolean},
+            multi={'state': str, 'adapter': str, 'task': str, 'id': cast.uint})
+        ids = params.pop('id', None)
+        data = params.pop('data', None)
         update = params.pop('update', None)
+        filter = { self._xlate[k]:v for k,v in iteritems(params) }
         with self.graph(job_uuid, create=False) as g:
             with g.transaction(write=bool(update)) as txn:
-                tasks = txn.lg_lite.tasks(**filter)
-                if update:
-                    # yield tasks after applying update against each
-                    tasks = ((t.update(**update),t)[1] for t in tasks)
-                tasks = (t.status for t in tasks)
-                for chunk in self.stream(tasks):
+                for chunk in self.stream(self._streamtasks(txn, filter, update, ids, data)):
                     yield chunk
 
     get  = _get_post

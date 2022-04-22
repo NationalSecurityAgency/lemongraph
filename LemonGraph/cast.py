@@ -51,3 +51,7 @@ def unum(x):
         f = resolve(to_num, t, x)
     return f(x)
 
+def boolean(x, false=set([None, False, 0, '0', 'n', 'f', 'no', 'false', ''])):
+    if isinstance(x, str):
+        x = x.lower()
+    return x not in false
