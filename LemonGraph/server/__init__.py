@@ -1140,7 +1140,10 @@ class _Params(object):
                 # fall back to query params (always an array)
                 val = self.params[field]
             else:
-                val, = self.params[field]
+                try:
+                    val, = self.params[field]
+                except ValueError:
+                    raise HTTPError(400, 'parameter may only be specified once: %s' % repr(field))
             # stash output
             t[0][t[1]] = [validate(v) for v in val] if multi else validate(val)
         return output
