@@ -37,8 +37,8 @@ def to_ticks(ts=None, inv=1.0/TPS, round=True):
         raise ValueError(ts)
     return int(ts * TPS)
 
-def from_ticks(val, inv=1.0/TPS):
-    return val * inv
+def from_ticks(val, fTPS=float(TPS)):
+    return val / fTPS
 
 ENABLE = 1
 AUTOTASK = 2
