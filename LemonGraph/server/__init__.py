@@ -1470,6 +1470,10 @@ class LG__Delta_Job(Handler, _Params, _Streamy):
             'id': uuid,
             'pos': txn.nextID,
             'size': txn.graph.size,
+            'nodes': txn.nodes_count(),
+            'edges': txn.edges_count(),
+            'enabled': txn.enabled,
+            'priority': txn.priority,
             'created': uuid_to_utc(uuid),
         }
 
