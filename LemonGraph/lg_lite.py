@@ -526,7 +526,7 @@ class Flow(object):
 
 
 class Task(object):
-    states = StringMap(['active', 'done', 'error', 'deleted'])
+    states = StringMap(['active', 'done', 'error', 'deleted', 'retry', 'idle', 'void'])
     _ts = ffi.new('uint64_t[]', 1)
 
     @classmethod
@@ -552,7 +552,7 @@ class Task(object):
     def _Find(cls, flow, ignore, timeout=unspecified):
         for u in cls._Retries(flow):
             if u not in ignore:
-                return flow.lg.task(uuid=u, retry=True, timeout=flow.timeout if timeout is unspecified else timeout)
+                return flow.lg.task(uuid=u, retry=True, state='active', timeout=flow.timeout if timeout is unspecified else timeout)
         raise IndexError
 
     @classmethod
@@ -674,10 +674,6 @@ class Task(object):
             details = None
             # and flag to remove from statusdb & recorddb
             delete = True
-        elif state == 'retry':
-            state = 'active'
-            touch = from_ticks(to_ticks() - 1)
-            timeout = from_ticks(1)
 
         # clone current status
         _status = list(self._status)
@@ -740,4 +736,9 @@ class Task(object):
     @property
     def _rkey(self):
         if self.active and self.timeout:
-            return self.flow._pkey + uint.encode(self._status[3] + self._status[4]) + self._bid
+            timeout = self._status[3] + self._status[4]
+        elif self._status[2] == self.states.retry:
+            timeout = 0
+        else:
+            return
+        return self.flow._pkey + uint.encode(timeout) + self._bid

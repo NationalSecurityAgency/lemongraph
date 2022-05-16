@@ -1215,16 +1215,15 @@ class _LG_Tasky(Handler, _Streamy):
     def task_info(task, ids=None, data=None):
         chains = task.chains() if data else ()
         if ids:
-            ids = set(ids)
-
             # ensure at least one record has a requested node/edge ID
-            for chain in task.chains(ids=ids):
+            cs = task.chains(ids=set(ids))
+            for chain in cs:
                 break
             else:
                 return
             if data is None:
                 # add matching records to output if 'data' flag was unspecified
-                chains = task.chains(ids=ids)
+                chains = itertools.chain([chain], cs)
         # emit task status object
         return task.status, chains
 
@@ -1427,9 +1426,9 @@ class LG__Task_Job_Task_post(_Input):
         # but 'state' is special
         state = params.pop('state', 'done')
         if isinstance(state, string_types):
-            # current task state must be 'active'
+            # current task state must be 'active' or 'idle'
             # set to provided state after ingest
-            state = { 'active': state }
+            state = { 'active': state, 'idle': state }
         elif isinstance(state, list):
             # current task state can be any of the provided
             # map each to itself - do not update state
