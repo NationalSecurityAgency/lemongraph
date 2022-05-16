@@ -453,7 +453,7 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 		* Content-Type: `application/json`, `application/x-msgpack`
 	* parameters/payload - all fields are optional:
 		* __query__ - limit tasks to be for a specific _query_ or queries (else round-robins through available)
-		* __limit__ - limit task size to _limit_ records - default (200) inherited from adapter config, does not apply to re-issued tasks
+		* __limit__ - limit task size to _limit_ records - default (200) inherited from adapter config, does not apply to reissued tasks
 		* __timeout__ - set task timeout to _timeout_ seconds in the future - default (60) inherited from adapter config, use __0__ to disable
 		* __ignore__ - skip provided list of tasks
 		* __uuid__ - limit task to be from supplied job uuid[s]
@@ -492,7 +492,7 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 		* Accept: `application/json`, `application/x-msgpack`
 	* parameters/payload:
 		* __task__: if supplied, examine provided task uuid[s] only
-		* __state__: optionally filter by task states (__active__, __done__, or __error__)
+		* __state__: optionally filter by task states (__active__, __idle__, __done__, __retry__, __error__, or __void__)
 		* __adapter__: optionally filter by adapters
 		* __data__: optional boolean flag
 			* if true, include all task chains after each task
@@ -507,7 +507,7 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 				"adapter": list,
 				"state": list,
 				"update": {
-		            "state": string (__active__, __done__, __error__, __retry__, or __delete__/__deleted__)
+		            "state": string (__active__, __idle__, __done__, __retry__, __error__, __void__, or __delete__/__deleted__)
 		            "touch": bool (now) or timestamp,
 		            "timeout": unum (use 0 to disable),
 		            "retry": bool/uint (to increment/set retry count),
@@ -528,12 +528,11 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 	* Request headers:
 		* Content-Type: `application/json`, `application/x-msgpack`
 	* payload:
-		* __state__: valid task states include: __active__, __done__, __error__, __retry__, or __delete__/__deleted__
-			* if string, task must currently be __active__, and will be set to the provided task state
+		* __state__: valid task states include: __active__, __idle, __done__, __error__, __retry__, __void__, or __delete__/__deleted__
+			* if string, task must currently be __active__ or __idle__, and will be set to the provided task state
 			* if list, task state must be one of provided, and will not be modified
 			* if dict, task state must be one of the keys, and will be set to the associated value
-			* if not provided, default behavior is to set an __active__ task to __done__
-			* __retry__ is a pseudo-state - it sets the state to __active__, __touch__ to __now() - 0.1__, and __timeout__ to __0.1__
+			* if not provided, default behavior is to set an __active__ or __idle__ task to __done__
 		* __timeout__: assign new task timeout - use 0 to disable
 		* __details__: assign task details to supplied value
 		* __nodes__: list of node objects

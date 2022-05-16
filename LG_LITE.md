@@ -54,7 +54,7 @@ Jobs themselves are created/updated/deleted via the older `/graph` endpoint, and
 * poll server for new tasks from any job
 	* may request a specific query pattern
 	* may provide a list of tasks to ignore
-	* may provide a task timeout (seconds), after which a task may be re-issued:
+	* may provide a task timeout (seconds), after which a task may be reissued:
 		* default is flow default, which defaults to _60_ seconds
 		* use _0_ to disable automatic retry
 	* may provide an upper limit for task size
@@ -69,3 +69,20 @@ Jobs themselves are created/updated/deleted via the older `/graph` endpoint, and
 * post task results
 	* updates task timestamp
 	* task will be marked as _done_ unless otherwise specified
+
+## Tasks
+
+* are generated for adapters on demand
+* contain one or more snapshots of node/edge chains matched by the associated adapter's query pattern
+* have a _timestamp_ that can be updated manually, or automatically when [re]issued or results are posted
+* have a _timeout_ after which _active_ tasks will be reissued (default _60_ seconds, set to _0_ to disable)
+* have a _retries_ field that holds the number of times a task has been issued
+* have a _details_ field that holds free-form data - intended use is to indicate why a task is in a particular state
+* have _state_, which can be one of:
+	* _active_ - initial state - task will be reissued if _timeout_ is non-zero and _timeout_ seconds have elapsed since its _timestamp_ was updated
+	* _idle_ - set manually to prevent task from being automatically reissued
+	* _done_ - set automatically (unless prevented) for _active_/_idle_ tasks that receive results
+	* _retry_ - set manually to queue task for immediate reissue and promotion to _active_
+	* _error_ - set manually to indicate task processing encountered an error
+	* _void_ - set manually to indicate task is ignored
+	* _deleted_ - pseudostate, set manually to delete task from job
