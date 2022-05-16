@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.4.0] - 2022-05-16
+- http client automatcially reconnects if disconnected - makes tests pass for macOS
+- promote 'retry' task state to real state instead of marking as active with a very short timeout
+- add 'idle' and 'void' tasks states to mark them as 'maybe do later' and 'will not do', respectively
+
 ## [3.3.0] - 2022-04-22
 - allow full task contents to be pulled via /lg/task/<job_uuid>
 - allow filtering by node/edge IDs on /lg/task/<job_uuid>
