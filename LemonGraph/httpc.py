@@ -74,14 +74,16 @@ class RESTClient(object):
             url += '?' + '&'.join('%s=%s' % (quote(k), quote(str(v))) for k, v in p)
 
         hh = dict(h.items())
-        try:
-            self.conn.request(method, url=url, body=body, headers=hh)
-            res = self.conn.getresponse()
-        except http_client.error:
-            raise
-        except Exception as e:
-            self.conn.close()
-            raise self.error(e)
+        while True:
+            try:
+                self.conn.request(method, url=url, body=body, headers=hh)
+                res = self.conn.getresponse()
+                break
+            except (BrokenPipeError, http_client.error):
+                self.reconnect()
+            except Exception as e:
+                self.conn.close()
+                raise self.error(e)
 
         headers = Headers()
         for header, value in res.getheaders():
