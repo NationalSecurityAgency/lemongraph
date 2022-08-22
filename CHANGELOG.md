@@ -1,5 +1,8 @@
 # Changelog
 
+## [3.4.1] - 2022-08-22
+- add 'Access-Control-Allow-Origin: *' HTTP header to responses if 'Origin' header is present in request
+
 ## [3.4.0] - 2022-05-16
 - http client automatcially reconnects if disconnected - makes tests pass for macOS
 - promote 'retry' task state to real state instead of marking as active with a very short timeout

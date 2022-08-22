@@ -204,6 +204,8 @@ class Handler(HTTPMethods):
             self.streamer = Streamers['application/json']
         self.dumps = self.streamer.encode
         self.res.headers.set('Content-Type', self.streamer.mime)
+        if 'Origin' in self.req.headers:
+            self.res.headers.set('Access-Control-Allow-Origin', '*')
 
     def format_edge(self, e):
         d = e.as_dict()
