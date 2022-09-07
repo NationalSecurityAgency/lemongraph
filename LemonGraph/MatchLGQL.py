@@ -6,8 +6,8 @@ import itertools
 
 from collections import defaultdict, deque
 
-SQ = '(?:\'(?:[^\'\\\\]|\\\\[\'\"\\\\])*\')'
-DQ = '(?:\"(?:[^\"\\\\]|\\\\[\'\"\\\\])*\")'
+SQ = r'''(?:'(?:[^'\\]|\\['"\\])*')'''
+DQ = r'''(?:"(?:[^"\\]|\\['"\\])*")'''
 BW = '(?:(?:(?![0-9])\w)\w*)'
 
 STR = re.compile('(?:%s|%s)' % (DQ, SQ), re.UNICODE)
