@@ -92,7 +92,7 @@ typedef struct buffer_t {
 } buffer_t;
 
 // base database object
-struct db_t{
+struct db_t {
 	void *env;
 	db_dbi *handles;
 	pthread_mutex_t mutex;

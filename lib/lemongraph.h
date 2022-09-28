@@ -42,7 +42,7 @@ typedef struct kv_iter_t * kv_iter_t;
 // For deletions, the 'next' field points to the top-level entry that was the target of the delete.
 // As a deletion may cascade to multiple children, I don't think it makes any sense to reserve it for pointing to a future entry.
 
-struct entry_t{
+struct entry_t {
 	logID_t id;
 	uint8_t is_new:1;
 	uint8_t rectype:7;

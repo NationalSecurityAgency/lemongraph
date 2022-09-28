@@ -15,6 +15,7 @@
 
 #include"lmdb.h"
 #include"db.h"
+#include"osal.h"
 
 #include"static_assert.h"
 
@@ -310,9 +311,9 @@ int db_txn_init(txn_t txn, db_t db, txn_t parent, int flags){
 int db_sync(db_t db, int force){
 	int r = mdb_env_sync((MDB_env *)db->env, force);
 	// lmdb refuses to sync envs opened with mdb_readonly
-	// I am not bothering with figuring out if fdatasync is broken on your platform
+	// I've begun bothering with figuring out cross-platform fdatasync
 	if(EACCES == r)
-		r = fdatasync(db->fd);
+		r = osal_fdatasync(db->fd);
 	return r;
 }
 
@@ -648,7 +649,7 @@ int txn_iter_init(iter_t iter, txn_t txn, int dbi, void *pfx, const unsigned int
 
 static INLINE int _iter_next(iter_t iter, const int data){
 	// set/advance key
-	iter->r = cursor_get((cursor_t)iter, &(iter->key), &(iter->data), (MDB_cursor_op)iter->op);
+	iter->r = cursor_get((cursor_t)iter, &(iter->key), &(iter->data), iter->op);
 	if(DB_NEXT != iter->op)
 		iter->op = DB_NEXT;
 	if(DB_SUCCESS != iter->r)

@@ -80,6 +80,7 @@ Python 3 should work now though - replace `python`/`pypy`/`easy_install` and pac
 	* `pypy -mensurepip`
 
 ## LemonGraph installation
+
 * `python setup.py install` (or you know, `pypy`)
 
 Or to run without proper installation, you must manually install dependencies:
@@ -99,6 +100,7 @@ fd, path = tempfile.mkstemp()
 os.close(fd)
 
 # open graph object
+print("graph save to ", path)
 g = LemonGraph.Graph(path)
 
 # enter a write transaction
@@ -121,10 +123,10 @@ with g.transaction(write=True) as txn:
 
     # print out nodes and edges
     for n in txn.nodes():
-        print n
+        print(n)
 
     for e in txn.edges():
-        print e
+        print(e)
 
     b4_delete = txn.lastID
 
@@ -133,29 +135,29 @@ with g.transaction(write=True) as txn:
 
     # delete a node - cascades to edges and properties
     node2.delete()
-    print
+    print()
 
 with g.transaction(write=False) as txn:
     # run an ad-hoc query before delete
-    print "ad-hoc query: nodes before deletions"
+    print("ad-hoc query: nodes before deletions")
     for chain in txn.query('n()', stop=b4_delete):
-        print chain
-    print
+        print(chain)
+    print()
 
     # run an ad-hoc query
-    print "ad-hoc query: nodes after deletions"
+    print("ad-hoc query: nodes after deletions")
     for chain in txn.query('n()'):
-        print chain
-    print
+        print(chain)
+    print()
 
     # run streaming queries
-    print "streaming query: nodes/edges"
+    print("streaming query: nodes/edges")
     for q, chain in txn.mquery(['n(prop3)','e()','n()->n()'], start=1):
-        print q, "=>", chain
-    print
+        print(q, "=>", chain)
+    print()
 
     # dump the internal graph log to stdout
-    print "dump:"
+    print("dump:")
     txn.dump()
 
 # delete graph artifacts from disk
