@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.4.2] - 2023-02-15
+- update Dockerfile to force test stage to build
+- update alpine to 3.17
+- update to latest LMDB
+
 ## [3.4.1] - 2022-08-22
 - add 'Access-Control-Allow-Origin: *' HTTP header to responses if 'Origin' header is present in request
 
