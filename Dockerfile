@@ -2,7 +2,7 @@
 #	debian:11-slim
 #	ubuntu:focal
 #	fedora:35
-ARG IMAGE=alpine:3.15
+ARG IMAGE=alpine:3.17
 
 # build the base runtime image
 FROM ${IMAGE} AS runtime
@@ -59,6 +59,9 @@ RUN python3 < /test.py
 
 # and bless install stage
 FROM install
+
+# force test stage to run
+COPY --from=test /mnt /mnt
 
 # LG listens on port 8000 by default
 EXPOSE 8000
