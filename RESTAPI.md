@@ -507,7 +507,7 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 				"adapter": list,
 				"state": list,
 				"update": {
-		            "state": string (__active__, __idle__, __done__, __retry__, __error__, __void__, or __delete__/__deleted__)
+		            "state": string (one of: active, idle, done, retry, error, void, or delete/deleted)
 		            "touch": bool (now) or timestamp,
 		            "timeout": unum (use 0 to disable),
 		            "retry": bool/uint (to increment/set retry count),
@@ -528,7 +528,7 @@ If present, several meta keys are harvested, transformed, and cached in the glob
 	* Request headers:
 		* Content-Type: `application/json`, `application/x-msgpack`
 	* payload:
-		* __state__: valid task states include: __active__, __idle, __done__, __error__, __retry__, __void__, or __delete__/__deleted__
+		* __state__: valid task states include: __active__, __idle__, __done__, __error__, __retry__, __void__, or __delete__/__deleted__
 			* if string, task must currently be __active__ or __idle__, and will be set to the provided task state
 			* if list, task state must be one of provided, and will not be modified
 			* if dict, task state must be one of the keys, and will be set to the associated value
