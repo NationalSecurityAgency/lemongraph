@@ -16,6 +16,11 @@ RUN [ -z "${CONFIGURE}" ] || (${CONFIGURE})
 # ensure exactly one of apk/apt-get/yum exists
 RUN n=0; for x in apk apt-get yum; do ! type $x 2>/dev/null || n=$((n+1)); done; [ $n -eq 1 ]
 
+# use package manager to install recent updates
+RUN ! type apk     2>/dev/null || apk upgrade --no-cache
+RUN ! type apt-get 2>/dev/null || (apt-get update && apt-get upgrade -y -q && apt-get clean)
+RUN ! type yum     2>/dev/null || (yum upgrade -y && yum clean all)
+
 # use package manager to pull in runtime dependencies
 ARG APK_RUNTIME="py3-cffi py3-dateutil py3-lazy py3-msgpack py3-setuptools py3-six py3-ujson"
 ARG APT_RUNTIME="python3-cffi python3-dateutil python3-msgpack python3-setuptools python3-six python3-ujson"
