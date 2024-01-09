@@ -1,8 +1,8 @@
 # default base image - should also work for:
-#	debian:11-slim
-#	ubuntu:focal
-#	fedora:35
-ARG IMAGE=alpine:3.17
+#	debian:12-slim
+#	ubuntu:jammy
+#	fedora:39
+ARG IMAGE=alpine:3.19
 
 # build the base runtime image
 FROM ${IMAGE} AS runtime
