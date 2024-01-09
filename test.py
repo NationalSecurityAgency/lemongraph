@@ -397,7 +397,7 @@ class TestAlgorithms(unittest.TestCase):
 
     def test_sp2(self):
         with self.g.transaction(write=True) as txn:
-            '''
+            r'''
                  n1a
                 /   \
               e0a   e1a
