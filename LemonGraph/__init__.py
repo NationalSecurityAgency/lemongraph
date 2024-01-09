@@ -21,6 +21,7 @@ from lazy import lazy
 import os
 from six import iteritems, itervalues
 import sys
+import time
 
 from .version import VERSION as __version__
 from .callableiterable import CallableIterableMethod
@@ -357,7 +358,7 @@ class Transaction(GraphItem):
     def flush(self, updated=False):
         if (updated or self.updated) and self._inline_adapters is not None and self.nextID > self._flushID:
             # exercise inline graph adapters
-            self._timestamp = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+            self._timestamp = datetime.datetime.fromtimestamp(time.time(), datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
             self._inline_adapters.update(self, self._flushID)
             del self._timestamp
             self._flushID = self.nextID

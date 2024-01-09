@@ -30,7 +30,7 @@ def uuid_to_utc_ts(u):
     return (uuid.UUID('{%s}' % u).time - 0x01b21dd213814000) / 1e7
 
 def uuid_to_utc(u):
-    return datetime.datetime.utcfromtimestamp(uuid_to_utc_ts(u)).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+    return datetime.datetime.fromtimestamp(uuid_to_utc_ts(u), datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
 
 def intersects(list1, list2):
     if len(list2) > len(list1):
