@@ -8,7 +8,7 @@ from collections import defaultdict, deque
 
 SQ = r'''(?:'(?:[^'\\]|\\['"\\])*')'''
 DQ = r'''(?:"(?:[^"\\]|\\['"\\])*")'''
-BW = '(?:(?:(?![0-9])\w)\w*)'
+BW = r'''(?:(?:(?![0-9])\w)\w*)'''
 
 WILD = re.compile(r'\*')
 STR = re.compile('(?:%s|%s)' % (DQ, SQ), re.UNICODE)
