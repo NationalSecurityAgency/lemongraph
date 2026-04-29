@@ -362,8 +362,10 @@ static INLINE int __resolve_blob(graph_txn_t txn, uint64_t *ret, char const *dat
 	if(DB_SUCCESS == r){
 		r = cursor_count(&idx, &count);
 		assert(DB_SUCCESS == r);
+		// initialize vkey to the first dup's strID once before the loop;
+		// inside the loop DB_NEXT_DUP advances it.
+		memcpy(&vkey, &ival, sizeof(ival));
 		while(1){
-			memcpy(&vkey, &ival, sizeof(ival));
 			// query main db
 			r = cursor_get(&c, &vkey, &val, DB_SET_KEY);
 			assert(DB_SUCCESS == r);
@@ -2420,3 +2422,4 @@ char *graph_string(graph_txn_t txn, strID_t id, size_t *len){
 int graph_fd(graph_t g){
 	return g->db.fd;
 }
+

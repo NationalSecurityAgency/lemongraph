@@ -348,6 +348,100 @@ class TestGraph(unittest.TestCase):
         with self.g.transaction(write=False) as txn:
             self.assertEqual(1, txn.nextID)
 
+    def test_string_intern_crc32_collision_dedup(self):
+        # String interning in lemongraph is backed by two LMDB tables per
+        # graph env:
+        #   DB_SCALAR     -- {strID: bytes} (the actual interned strings)
+        #   DB_SCALAR_IDX -- {crc32(bytes): strID} as DUPSORT, so one crc
+        #                    key holds the strIDs of every interned string
+        #                    that hashes to it.
+        #
+        # txn.stringID(s, update=True) calls graph_string_resolve, which
+        # calls __resolve_blob in lib/lemongraph.c, which:
+        #   1. computes chk = crc32(s).
+        #   2. walks every dup under DB_SCALAR_IDX[chk]; for each candidate
+        #      strID it fetches the bytes from DB_SCALAR[strID] and
+        #      memcmps against s. On a hit it returns the existing strID.
+        #   3. on no hit, allocates a fresh strID, appends s to DB_SCALAR
+        #      and the new strID to DB_SCALAR_IDX[chk].
+        #
+        # Step (2) is the dedup. If it ever silently fails to find an
+        # already-interned exact-bytes match, step (3) blindly inserts a
+        # new dup into the same DB_SCALAR_IDX bucket -- one new entry
+        # per call, growing the bucket without bound and inflating the
+        # cost of every subsequent lookup that lands on the same bucket.
+        #
+        # The cases below crc32-collide: distinct byte sequences that
+        # share a crc value, so they live in the same DB_SCALAR_IDX
+        # bucket. Each case inserts `first`, then `second` once, then
+        # re-inserts `second` ten more times. Every re-insert must
+        # resolve to the same strID returned the first time.
+        cases = [
+            # 21-byte raw vs 28-byte msgpack-encoded ISO timestamp; both
+            # crc32 = 0x99f3cc17. Realistic shape from a workload that
+            # interns property values (timestamps) alongside node values
+            # (domain-like strings).
+            (
+                b'solo-7632.example.com',
+                bytes.fromhex('bb323032362d30342d32395431303a30313a32332e3531343433385a'),
+            ),
+            # Two 20-byte random byte sequences; both crc32 = 0x02f5c3ad.
+            # Same length, so the bug isn't masked by a length-check fast
+            # path in the lookup.
+            (
+                bytes.fromhex('87a845a3800e3b31f9074f89e56f1a9c29ce59bb'),
+                bytes.fromhex('7d96da8515a711f2122b4d0655c15def6a966bfa'),
+            ),
+        ]
+        import binascii
+        for first, second in cases:
+            self.assertEqual(
+                binascii.crc32(first, 0),
+                binascii.crc32(second, 0),
+                'test setup error: pair does not crc32-collide',
+            )
+            self.assertNotEqual(first, second)
+
+        with self.g.transaction(write=True) as txn:
+            for first, second in cases:
+                # First call: bucket DB_SCALAR_IDX[chk] is empty, so step
+                # (2) finds no hit and step (3) allocates strID id_first,
+                # inserts (id_first -> first) into DB_SCALAR, and adds
+                # id_first as the bucket's first dup.
+                id_first = txn.stringID(first, update=True)
+                # Second call with `second`: the bucket now has one dup
+                # (id_first). Step (2) walks it, fetches DB_SCALAR[id_first]
+                # = first, length-or-byte-mismatches against second, falls
+                # through to step (3): allocate id_second, insert
+                # (id_second -> second) into DB_SCALAR, append id_second
+                # as the bucket's second dup.
+                id_second = txn.stringID(second, update=True)
+                self.assertNotEqual(0, id_first)
+                self.assertNotEqual(0, id_second)
+                self.assertNotEqual(
+                    id_first, id_second,
+                    'distinct strings must get distinct strIDs',
+                )
+                # Every subsequent stringID(second) MUST hit step (2)'s
+                # dedup -- walk the bucket past id_first, find id_second's
+                # bytes match, return id_second. If the walk silently
+                # bails after entry 0, dedup fails and step (3) appends
+                # a new dup every call.
+                for i in range(10):
+                    same = txn.stringID(second, update=True)
+                    self.assertEqual(
+                        id_second, same,
+                        'string intern dedup failed on iter %d for '
+                        'crc=0x%08x: re-inserting %r returned strID %d, '
+                        'expected %d.' % (
+                            i, binascii.crc32(first, 0),
+                            second, same, id_second,
+                        ),
+                    )
+                # And `first` (still the bucket's first dup) is
+                # unaffected -- continues to resolve to id_first.
+                self.assertEqual(id_first, txn.stringID(first, update=True))
+
 
 class TestAlgorithms(unittest.TestCase):
     serializer = Serializer.msgpack()
