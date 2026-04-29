@@ -349,28 +349,6 @@ class TestGraph(unittest.TestCase):
             self.assertEqual(1, txn.nextID)
 
     def test_string_intern_crc32_collision_dedup(self):
-        # String interning in lemongraph is backed by two LMDB tables per
-        # graph env:
-        #   DB_SCALAR     -- {strID: bytes} (the actual interned strings)
-        #   DB_SCALAR_IDX -- {crc32(bytes): strID} as DUPSORT, so one crc
-        #                    key holds the strIDs of every interned string
-        #                    that hashes to it.
-        #
-        # txn.stringID(s, update=True) calls graph_string_resolve, which
-        # calls __resolve_blob in lib/lemongraph.c, which:
-        #   1. computes chk = crc32(s).
-        #   2. walks every dup under DB_SCALAR_IDX[chk]; for each candidate
-        #      strID it fetches the bytes from DB_SCALAR[strID] and
-        #      memcmps against s. On a hit it returns the existing strID.
-        #   3. on no hit, allocates a fresh strID, appends s to DB_SCALAR
-        #      and the new strID to DB_SCALAR_IDX[chk].
-        #
-        # Step (2) is the dedup. If it ever silently fails to find an
-        # already-interned exact-bytes match, step (3) blindly inserts a
-        # new dup into the same DB_SCALAR_IDX bucket -- one new entry
-        # per call, growing the bucket without bound and inflating the
-        # cost of every subsequent lookup that lands on the same bucket.
-        #
         # The cases below crc32-collide: distinct byte sequences that
         # share a crc value, so they live in the same DB_SCALAR_IDX
         # bucket. Each case inserts `first`, then `second` once, then
