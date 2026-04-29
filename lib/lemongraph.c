@@ -2422,4 +2422,3 @@ char *graph_string(graph_txn_t txn, strID_t id, size_t *len){
 int graph_fd(graph_t g){
 	return g->db.fd;
 }
-
