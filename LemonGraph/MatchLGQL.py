@@ -346,7 +346,7 @@ class MatchLGQL(object):
             try:
                 lst.append(CLEAN_VAL[reg](m, m.group(0), self.cache))
             except ValueError as e:
-                raise self.syntax_error("bad value", pos=e.message)
+                raise self.syntax_error("bad value", pos=e.args[0])
             m, reg = self.token(COMMA, LIST_END)
             if reg is LIST_END:
                 return tuple(lst)
@@ -416,7 +416,7 @@ class MatchLGQL(object):
                 try:
                     val = (CLEAN_VAL[reg](m, m.group(0), self.cache),)
                 except ValueError as e:
-                    raise self.syntax_error("bad value", pos=e.message)
+                    raise self.syntax_error("bad value", pos=e.args[0])
             if '=' == op:
                 matches.appendleft((key, op, val))
             else:
