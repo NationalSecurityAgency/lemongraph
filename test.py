@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from LemonGraph import Graph, Serializer, dirlist, Query
+from LemonGraph import Graph, Serializer, dirlist, Query, QuerySyntaxError
 
 node = lambda i: dict((k, Nodes[i][k]) for k in ('type', 'value'))
 edge = lambda i: dict((k, Edges[i][k]) for k in ('type', 'value', 'src', 'tgt'))
@@ -391,6 +391,16 @@ class TestQL(unittest.TestCase):
                 except KeyError:
                     results[p] = [i]
         self.assertEqual(self.matches, results)
+
+    def test_bad_numeric_value(self):
+        # A token that matches the NUM regex but is not a real number (e.g. '+',
+        # '.', 'e') should surface as a clean QuerySyntaxError, not leak whatever
+        # the underlying float() conversion raised. Regression guard: these used
+        # to raise AttributeError on Python 3 because the handler read e.message.
+        from LemonGraph.MatchLGQL import MatchLGQL
+        for q in ('n(foo=+)', 'n(foo=.)', 'n(foo=e)', 'n(foo=[+])'):
+            with self.assertRaises(QuerySyntaxError):
+                MatchLGQL(q)
 
 
 if __name__ == '__main__':

@@ -767,7 +767,7 @@ def zcat(gen):
         if len(final):
             yield final
     except zlib.error as e:
-        raise Disconnected('zlib error: ' + e.message)
+        raise Disconnected('zlib error: ' + str(e))
 
 
 class Step(HTTPMethods):
