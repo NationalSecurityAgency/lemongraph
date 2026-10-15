@@ -1,3 +1,4 @@
+import errno
 import os
 import random
 import shutil
@@ -606,6 +607,23 @@ class TestDL(unittest.TestCase):
         # omit '.' and '..' to mimic os.listdir
         b = list(x for x in dirlist('/') if x not in '..')
         self.assertEqual(a, b)
+
+    def test_dirlist_bad_path(self):
+        # used to pass a NULL DIR* to readdir() and segfault
+        tmp = tempfile.mkdtemp()
+        try:
+            missing = os.path.join(tmp, 'missing')
+            with self.assertRaises(OSError) as cm:
+                list(dirlist(missing))
+            self.assertEqual(cm.exception.errno, errno.ENOENT)
+
+            plain = os.path.join(tmp, 'file')
+            open(plain, 'w').close()
+            with self.assertRaises(OSError) as cm:
+                list(dirlist(plain))
+            self.assertEqual(cm.exception.errno, errno.ENOTDIR)
+        finally:
+            shutil.rmtree(tmp)
 
 
 class TestQL(unittest.TestCase):
