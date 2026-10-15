@@ -1051,7 +1051,11 @@ static INLINE int _kv_setup_key(kv_t kv, void *key, size_t klen, int query){
 			return 0;
 		encode(id, kv->kbuf, kv->key.size);
 	}else{
-		assert(klen <= sizeof(kv->kbuf) - kv->klen);
+		// key is user-controlled (i.e. REST /kv/<uuid>/<key>) - fail instead of aborting the process
+		if(klen > sizeof(kv->kbuf) - kv->klen){
+			errno = ENAMETOOLONG;
+			return 0;
+		}
 		memcpy(&kv->kbuf[kv->klen], key, klen);
 		kv->key.size += klen;
 	}

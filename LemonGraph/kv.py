@@ -1,3 +1,5 @@
+import errno
+
 from . import lib, ffi, wire, listify_py2, unspecified
 from .serializer import Serializer
 
@@ -31,7 +33,9 @@ class KV(object):
     def __setitem__(self, key, value):
         key = self.serialize_key.encode(key)
         value = self.serialize_value.encode(value)
-        lib.kv_put(self._kv, key, len(key), value, len(value))
+        ffi.errno = 0
+        if not lib.kv_put(self._kv, key, len(key), value, len(value)) and ffi.errno == errno.ENAMETOOLONG:
+            raise ValueError('key too long (%d bytes)' % len(key))
 
     def __delitem__(self, key):
         key = self.serialize_key.encode(key)

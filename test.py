@@ -236,6 +236,33 @@ class TestGraph(unittest.TestCase):
             self.assertEqual(tuple(b.iterkeys()), ())
             txn.abort()
 
+    def test_kv_key_too_long(self):
+        # a key that does not fit in the fixed-size key buffer used to trip an assert() (and abort the process)
+        short, long = 'k' * 100, 'k' * 600
+        with self.g.transaction(write=True) as txn:
+            for kwargs in ({}, {'map_keys': True}):
+                b = txn.kv('foo', **kwargs)
+                b[short] = 'v'
+                self.assertEqual(b[short], 'v')
+                if kwargs:
+                    # mapped keys are interned, so they may be any length
+                    b[long] = 'v'
+                    self.assertEqual(b[long], 'v')
+                    continue
+                with self.assertRaises(ValueError):
+                    b[long] = 'v'
+                self.assertFalse(long in b)
+                with self.assertRaises(KeyError):
+                    b[long]
+                with self.assertRaises(KeyError):
+                    del b[long]
+            s = txn.sset('bar')
+            self.assertTrue(s.add(short))
+            with self.assertRaises(ValueError):
+                s.add(long)
+            self.assertFalse(long in s)
+            txn.abort()
+
     def test_kv_next(self):
         with self.g.transaction(write=True) as txn:
             b = txn.kv('foo')
@@ -722,6 +749,31 @@ class Test_Depth(LocalServer):
         self.assertEqual(data['nodes'][2]['depth'], 3)
 
 class Test_Endpoints(LocalServer):
+    def test_kv_key_too_long(self):
+        client = self.client
+        code, headers, data = client.post('/graph', json={'meta': {}})
+        self.assertEqual(code, 201)
+        kv = '/kv/' + str(headers['location']).split('/')[-1]
+
+        code, headers, data = client.put(kv + '/' + 'k' * 100, json='v')
+        self.assertEqual(code, 204)
+        code, headers, data = client.get(kv + '/' + 'k' * 100)
+        self.assertEqual(code, 200)
+        self.assertEqual(data, 'v')
+
+        # used to assert() in the C library and kill the worker process
+        for method in client.put, client.post:
+            code, headers, data = method(kv + '/' + 'k' * 600, json='v')
+            self.assertEqual(code, 400)
+        code, headers, data = client.post(kv, json={'k' * 600: 'v'})
+        self.assertEqual(code, 400)
+        code, headers, data = client.delete(kv + '/' + 'k' * 600)
+        self.assertEqual(code, 404)
+
+        # and the server is still serving
+        code, headers, data = client.get(kv + '/' + 'k' * 100)
+        self.assertEqual(code, 200)
+
     def test_static(self):
         code, headers, data = self.client.get('/static/lemon.png')
         self.assertEqual(code, 200)

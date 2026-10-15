@@ -1,3 +1,5 @@
+import errno
+
 from . import lib, ffi, wire, unspecified
 from .serializer import Serializer
 
@@ -19,7 +21,11 @@ class SSet(object):
 
     def add(self, value):
         value = self.serialize_value.encode(value)
-        return bool(lib.kv_put(self._kv, value, len(value), b'', 0))
+        ffi.errno = 0
+        ret = bool(lib.kv_put(self._kv, value, len(value), b'', 0))
+        if not ret and ffi.errno == errno.ENAMETOOLONG:
+            raise ValueError('value too long (%d bytes)' % len(value))
+        return ret
 
     def remove(self, value):
         evalue = self.serialize_value.encode(value)

@@ -273,6 +273,14 @@ class Handler(HTTPMethods):
     def kv(self, txn):
         return txn.kv('lg.restobjs', serialize_value=self.msgpack)
 
+    @staticmethod
+    def kv_set(kv, key, value):
+        try:
+            kv[key] = value
+        except ValueError as e:
+            # i.e. key too long
+            raise HTTPError(400, str(e))
+
 
 def graphtxn(write=False, create=False, excl=False, on_success=None, on_failure=None):
     def decorator(func):
@@ -994,7 +1002,7 @@ class KV_UUID(Handler):
         except Exception as e:
             raise HTTPError(400, "bad input (%s)" % str(e))
         for k, v in gen:
-            kv[k] = merge_values(kv.get(k, None), v)
+            self.kv_set(kv, k, merge_values(kv.get(k, None), v))
 
     @graphtxn(write=True)
     def put(self, g, txn, _, uuid):
@@ -1008,7 +1016,7 @@ class KV_UUID(Handler):
             if k not in data:
                 del kv[k]
         for k, v in gen:
-            kv[k] = v
+            self.kv_set(kv, k, v)
 
     @graphtxn(write=True)
     def delete(self, g, txn, _, uuid):
@@ -1034,13 +1042,13 @@ class KV_UUID_Key(Handler):
     def post(self, g, txn, _, uuid, key):
         data = self.input()
         kv = self.kv(txn)
-        kv[key] = merge_values(kv.get(key, None), data)
+        self.kv_set(kv, key, merge_values(kv.get(key, None), data))
 
     @graphtxn(write=True)
     def put(self, g, txn, _, uuid, key):
         data = self.input()
         kv = self.kv(txn)
-        kv[key] = data
+        self.kv_set(kv, key, data)
 
     @graphtxn(write=True)
     def delete(self, g, txn, _, uuid, key):
