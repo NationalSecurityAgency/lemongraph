@@ -722,6 +722,27 @@ class Test_Depth(LocalServer):
         self.assertEqual(data['nodes'][2]['depth'], 3)
 
 class Test_Endpoints(LocalServer):
+    def test_kv_missing_key(self):
+        # HTTPError raised from a generator-style handler used to surface as a 500 (UnboundLocalError)
+        client = self.client
+        code, headers, data = client.post('/graph', json={'meta': {}})
+        self.assertEqual(code, 201)
+        kv = '/kv/' + str(headers['location']).split('/')[-1]
+
+        # graph has no kv domain at all yet
+        code, headers, data = client.get(kv + '/absent')
+        self.assertEqual(code, 404)
+
+        # kv domain exists, but key does not
+        code, headers, data = client.put(kv + '/present', json='v')
+        self.assertEqual(code, 204)
+        code, headers, data = client.get(kv + '/present')
+        self.assertEqual(code, 200)
+        self.assertEqual(data, 'v')
+        code, headers, data = client.get(kv + '/absent')
+        self.assertEqual(code, 404)
+        self.assertEqual(data['message'], 'key not found')
+
     def test_static(self):
         code, headers, data = self.client.get('/static/lemon.png')
         self.assertEqual(code, 200)

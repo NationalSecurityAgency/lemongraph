@@ -292,15 +292,15 @@ def graphtxn(write=False, create=False, excl=False, on_success=None, on_failure=
                     except StopIteration:
                         first = b''
                         ret = ()
-                    finally:
-                        if write:
-                            txn.flush()
-                            self.res.headers.set('X-lg-updates', txn.lastID - lastID)
-                        self.res.headers.set('X-lg-maxID', txn.lastID)
-                        self.res.headers.set('X-lg-id', uuid)
-                        yield first
-                        for x in ret:
-                            yield x
+                    # any other exception (i.e. HTTPError from a generator handler) propagates untouched
+                    if write:
+                        txn.flush()
+                        self.res.headers.set('X-lg-updates', txn.lastID - lastID)
+                    self.res.headers.set('X-lg-maxID', txn.lastID)
+                    self.res.headers.set('X-lg-id', uuid)
+                    yield first
+                    for x in ret:
+                        yield x
                     success = True
                 # delay final chunking trailer until txn has been committed
                 if write:
