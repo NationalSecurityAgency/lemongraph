@@ -9,7 +9,9 @@ except:
     print("Usage: python -mLemonGraph.snapshot path/to/src.db > dst.db", file=sys.stderr)
     sys.exit(1)
 
+# snapshot blocks are binary - on Python 3 sys.stdout is a text stream, so write to its underlying buffer
+out = getattr(sys.stdout, 'buffer', sys.stdout)
 with Graph(db, create=False) as g:
     for block in g.snapshot():
-        sys.stdout.write(block)
+        out.write(block)
 sys.stdout.close()

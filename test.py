@@ -2,6 +2,7 @@ import os
 import random
 import shutil
 import signal
+import subprocess
 import sys
 import tempfile
 import time
@@ -49,6 +50,22 @@ class TestGraph(unittest.TestCase):
 
     def tearDown(self):
         self.g.delete()
+
+    def test_snapshot_cli(self):
+        # `python -mLemonGraph.snapshot path/to/src.db > dst.db`
+        with self.g.transaction(write=True) as txn:
+            txn.node(type='foo', value='bar')
+            txn.node(type='foo', value='baz')
+        fd, dst = tempfile.mkstemp()
+        try:
+            with os.fdopen(fd, 'wb') as fh:
+                subprocess.check_call([sys.executable, '-m', 'LemonGraph.snapshot', self.g.path], stdout=fh,
+                    cwd=os.path.dirname(os.path.abspath(__file__)))
+            with Graph(dst, create=False, serialize_property_value=self.serializer) as copy:
+                with copy.transaction(write=False) as txn:
+                    self.assertEqual(sorted((n.type, n.value) for n in txn.nodes()), [('foo', 'bar'), ('foo', 'baz')])
+        finally:
+            Graph(dst, create=False).delete()
 
     def test_commit(self):
         with self.g.transaction(write=True) as txn:
