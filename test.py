@@ -593,6 +593,12 @@ class TestSerializers(unittest.TestCase):
         c = s.decode(b)
         self.assertEqual(a, c)
 
+    def test_msgpack_hashable(self):
+        s = Serializer.msgpack(hashable=True)
+        a = ('foo', (1, 2), u'bar\u2020')
+        self.assertEqual(a, s.decode(s.encode(a)))
+        self.assertRaises(ValueError, s.encode, {'foo': 'bar'})
+
     def test_uuid(self):
         s = Serializer.uuid()
         u = uuid.uuid1()

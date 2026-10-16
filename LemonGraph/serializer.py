@@ -1,6 +1,9 @@
 from . import ffi, lib, wire
 import msgpack as messagepack
-import collections
+try:
+    from collections.abc import Hashable
+except ImportError:  # Python 2
+    from collections import Hashable
 import sys
 from uuid import UUID
 
@@ -68,7 +71,7 @@ class Serializer(object):
     def msgpack(hashable=False):
         if hashable:
             def encode(x):
-                if not isinstance(x, collections.Hashable):
+                if not isinstance(x, Hashable):
                     raise ValueError(x)
                 return messagepack.packb(x, use_bin_type=False)
 
