@@ -2,6 +2,8 @@ import os
 import random
 import shutil
 import signal
+import socket
+import subprocess
 import sys
 import tempfile
 import time
@@ -722,6 +724,33 @@ class Test_Depth(LocalServer):
         self.assertEqual(data['nodes'][2]['depth'], 3)
 
 class Test_Endpoints(LocalServer):
+    def workers(self):
+        try:
+            out = subprocess.check_output(['pgrep', '-P', str(self.server)])
+        except OSError:
+            self.skipTest('pgrep not available')
+        return sorted(int(x) for x in out.split())
+
+    def test_unsupported_http_version(self):
+        # serve one request first so the worker pool has settled
+        self.client.get('/static/lemon.png')
+        time.sleep(0.5)
+        before = self.workers()
+        sock = socket.socket(socket.AF_UNIX)
+        sock.connect(self.sockpath)
+        sock.sendall(b'GET /graph HTTP/2.0\r\n\r\n')
+        resp = b''
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            resp += chunk
+        sock.close()
+        self.assertTrue(resp.startswith(b'HTTP/1.0 505 '), resp)
+        # a bad request must not kill the worker that served it
+        time.sleep(0.5)
+        self.assertEqual(before, self.workers())
+
     def test_static(self):
         code, headers, data = self.client.get('/static/lemon.png')
         self.assertEqual(code, 200)

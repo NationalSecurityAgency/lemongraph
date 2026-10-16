@@ -291,6 +291,7 @@ class Service(object):
                 while go:
                     self.maxreqs -= 1
                     res = Response(conn)
+                    req = None
                     try:
                         try:
                             req = Request(conn, res, timeout=self.timeout)
@@ -305,7 +306,7 @@ class Service(object):
                         pass
                     ended = time.time()
                     log.debug('response/finished ms: %d/%d', res.delay_ms, int((ended - res.start) * 1000))
-                    code = keepalive = 'HTTP/1.1' == req.version and not res.headers.contains('Connection', 'close')
+                    code = keepalive = req is not None and 'HTTP/1.1' == req.version and not res.headers.contains('Connection', 'close')
                     if keepalive and conn:
                         continue
                     go = self.maxreqs > 0
