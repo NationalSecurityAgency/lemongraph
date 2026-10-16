@@ -452,7 +452,7 @@ class Transaction(GraphItem):
         type = kwargs.pop('type', None)
         beforeID = kwargs.pop('beforeID', None)
         if kwargs:
-            raise TypeError('got an unexpected keyword argument[s]: {}'.kwargs.keys())
+            raise TypeError('got an unexpected keyword argument[s]: {}'.format(list(kwargs)))
 
         if by_type:
             type = self.serialize_node_type.encode(type)
@@ -474,7 +474,7 @@ class Transaction(GraphItem):
 
         beforeID = kwargs.pop('beforeID', None)
         if kwargs:
-            raise TypeError('got an unexpected keyword argument[s]: {}'.kwargs.keys())
+            raise TypeError('got an unexpected keyword argument[s]: {}'.format(list(kwargs)))
 
         if by_type:
             type = self.serialize_edge_type.encode(type)

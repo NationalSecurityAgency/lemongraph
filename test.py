@@ -119,6 +119,11 @@ class TestGraph(unittest.TestCase):
             fewer_edges = sum(1 for x in n1.iterlinks(types=(edge(1)['type'],)))
             self.assertTrue(all_edges > fewer_edges)
 
+    def test_unexpected_kwargs(self):
+        with self.g.transaction(write=False) as txn:
+            self.assertRaises(TypeError, txn.nodes, bogus=1)
+            self.assertRaises(TypeError, txn.edges, bogus=1)
+
     def test_edge_dirs(self):
         with self.g.transaction(write=True) as txn:
             load_data(txn)
