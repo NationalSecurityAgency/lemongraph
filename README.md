@@ -162,6 +162,15 @@ with g.transaction(write=False) as txn:
 g.delete()
 ```
 
+To hand a graph to [NetworkX](https://networkx.org/) (installed separately - `pip install networkx`), export a transaction's view of it. Nodes are keyed by node ID, edges by edge ID (so parallel edges are kept), `type`, `value` and properties become node/edge attributes, and graph properties land in `G.graph`. A transaction opened with `beforeID` exports that historical view.
+```python
+from LemonGraph.nx import to_networkx
+
+with g.transaction(write=False) as txn:
+    G = to_networkx(txn)                      # networkx.MultiDiGraph
+    G = to_networkx(txn, node_type='foo')     # only 'foo' nodes and the edges between them
+```
+
 # Tools
 
 Query a (potentially active) graph interactively:
