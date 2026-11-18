@@ -600,6 +600,106 @@ class TestSerializers(unittest.TestCase):
         u_bin = s.encode(u_str)
         self.assertEqual(u_str, s.decode(u_bin))
 
+class TestNetworkX(unittest.TestCase):
+    serializer = Serializer.msgpack()
+    # each test_foo() method is wrapped w/ setup/teardown around it, so each test has a fresh graph
+    def setUp(self):
+        fd, path = tempfile.mkstemp()
+        os.close(fd)
+        self.g = Graph(path, nosync=True, nometasync=True, serialize_property_value=self.serializer)
+
+    def tearDown(self):
+        self.g.delete()
+
+    def nx(self):
+        try:
+            import networkx
+        except ImportError:
+            self.skipTest('networkx not installed')
+        return networkx
+
+    def test_missing_networkx(self):
+        from LemonGraph.nx import to_networkx
+        saved = sys.modules.get('networkx')
+        sys.modules['networkx'] = None
+        try:
+            with self.g.transaction(write=False) as txn:
+                self.assertRaises(ImportError, to_networkx, txn)
+        finally:
+            if saved is None:
+                del sys.modules['networkx']
+            else:
+                sys.modules['networkx'] = saved
+
+    def test_export(self):
+        nx = self.nx()
+        from LemonGraph.nx import to_networkx
+        with self.g.transaction(write=True) as txn:
+            load_data(txn)
+            txn['gp'] = 'gv'
+            n0 = txn.node(**node(0))
+            n1 = txn.node(**node(1))
+            e0 = next(iter(txn.edges(type='edge')))
+            e0['ep'] = {'nested': [1, 2]}
+            e0['key'] = 'not the edge key'
+
+        with self.g.transaction(write=False) as txn:
+            G = to_networkx(txn)
+            self.assertTrue(isinstance(G, nx.MultiDiGraph))
+            self.assertEqual(G.number_of_nodes(), 3)
+            self.assertEqual(G.number_of_edges(), 2)
+            self.assertEqual(G.graph, {'gp': 'gv'})
+            self.assertEqual(G.nodes[n0.ID], {'type': 'foo', 'value': 'bar', 'np1k': 'np1v'})
+            self.assertEqual(G.edges[n0.ID, n1.ID, e0.ID],
+                {'type': 'edge', 'value': 'e1', 'ep': {'nested': [1, 2]}, 'key': 'not the edge key'})
+            # direction is kept
+            self.assertTrue(G.has_edge(n0.ID, n1.ID))
+            self.assertFalse(G.has_edge(n1.ID, n0.ID))
+
+            G = to_networkx(txn, node_type='foo')
+            self.assertEqual((G.number_of_nodes(), G.number_of_edges()), (2, 1))
+            G = to_networkx(txn, edge_type='edge2')
+            self.assertEqual((G.number_of_nodes(), G.number_of_edges()), (3, 1))
+
+    def test_parallel_edges(self):
+        nx = self.nx()
+        from LemonGraph.nx import to_networkx
+        with self.g.transaction(write=True) as txn:
+            a = txn.node(type='foo', value='a')
+            b = txn.node(type='foo', value='b')
+            e1 = txn.edge(src=a, tgt=b, type='t1', value='')
+            e2 = txn.edge(src=a, tgt=b, type='t2', value='')
+            e2['p'] = 1
+
+        with self.g.transaction(write=False) as txn:
+            G = to_networkx(txn)
+            self.assertEqual(sorted(G[a.ID][b.ID]), sorted([e1.ID, e2.ID]))
+
+            G = to_networkx(txn, graph_class=nx.DiGraph)
+            self.assertEqual(G.number_of_edges(), 1)
+            # last edge seen wins, with no attributes left over from the first
+            self.assertEqual(G.edges[a.ID, b.ID], {'ID': e2.ID, 'type': 't2', 'value': '', 'p': 1})
+
+    def test_historical(self):
+        self.nx()
+        from LemonGraph.nx import to_networkx
+        with self.g.transaction(write=True) as txn:
+            load_data(txn)
+            n2 = txn.node(**node(2))
+            pos = txn.nextID
+            n2['late'] = True
+            txn.node(type='foo', value='late')
+
+        with self.g.transaction(write=False) as txn:
+            G = to_networkx(txn)
+            self.assertEqual(G.number_of_nodes(), 4)
+            self.assertTrue(G.nodes[n2.ID]['late'])
+
+        with self.g.transaction(write=False, beforeID=pos) as txn:
+            G = to_networkx(txn)
+            self.assertEqual(G.number_of_nodes(), 3)
+            self.assertFalse('late' in G.nodes[n2.ID])
+
 class TestDL(unittest.TestCase):
     def test_dirlist(self):
         a = os.listdir('/')
