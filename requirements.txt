@@ -1,6 +1,6 @@
-cffi>=1.8.2,<1.17
-lazy>=1.0,<1.7
-msgpack>=0.6,<1.1
-python-dateutil>=1.4,<2.9
+cffi>=1.8.2,<3
+lazy>=1.0,<2
+msgpack>=0.6,<2
+python-dateutil>=1.4,<3
 setuptools
 six
