@@ -64,15 +64,11 @@ The Python wrapper provides a friendly interface:
 
 ## Python setup
 
-Note that the REST service cannot run on CentOS 6's Python 2.6, as we rely on the new `memoryview` magic.
+The build fetches LMDB (git) and the d3/svg-crowbar/json-view JavaScript assets (curl) into `deps/` via `make deps`, so it needs network access the first time.
 
-Python 3 should work now though - replace `python`/`pypy`/`pip` and package names with appropriate Python 3 variants.
-
-* CPython on CentOS 6/7:
-	* `yum install -y gcc gcc-c++ make libffi-devel python-devel python-setuptools`
-	* `pip install 'cffi>=1.0'`
-* CPython on Ubuntu 15.04 - 20.04:
-	* `apt-get install gcc libffi-dev python-dev python-cffi`
+* CPython 3.9 - 3.13 on Ubuntu 22.04/24.04:
+	* `apt-get install -y gcc make git curl libffi-dev python3-dev python3-venv`
+	* `python3 -m venv venv && . venv/bin/activate`
 * CPython (compiled) - just bootstrap setuptools and install cffi:
 	* `python -mensurepip`
 	* `pip install 'cffi>=1.0'`
@@ -80,6 +76,7 @@ Python 3 should work now though - replace `python`/`pypy`/`pip` and package name
 	* `pypy -mensurepip`
 
 ## LemonGraph installation
+* `pip install .` (or `pip install -e .` for development, then `python test.py`)
 * `python setup.py install` (or you know, `pypy`)
 
 Or to run without proper installation, you must manually install dependencies:
